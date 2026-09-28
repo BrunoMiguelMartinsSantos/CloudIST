@@ -33,7 +33,7 @@ int main(int argc, char **argv){
     	fprintf(stderr, "Invalid input directory.\n");
     	return 1;
 	}
-
+ 
 	Resources resources = {
     .ram = ram,
     .disk = disk,
