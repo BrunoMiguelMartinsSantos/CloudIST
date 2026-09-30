@@ -5,14 +5,13 @@
 #include "parser.h"
 #include "datacenter.h"
 #include "constants.h"
-#include "filesystem.h"
 
 int main(int argc, char **argv){
 	DataCenter dc;
 	datacenter_init(&dc);
 
-	if (argc != 6) {
-    fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <input_dir>\n", argv[0]);
+	if (argc != 5) {
+    fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus>\n", argv[0]);
     return 1;
   }
 
@@ -20,7 +19,6 @@ int main(int argc, char **argv){
 	size_t ram;
 	size_t disk;
 	double cpu;
-	char *input_dir = argv[5];
 
 	if (parse_size_t_arg(argv[1], &servers) != 0 ||
 			parse_size_t_arg(argv[2], &ram) != 0 ||
@@ -29,11 +27,7 @@ int main(int argc, char **argv){
 		fprintf(stderr, "Invalid command line arguments.\n");
 		return 1;
 	}
-	if (!path_exists(input_dir)) {
-    	fprintf(stderr, "Invalid input directory.\n");
-    	return 1;
-	}
- 
+
 	Resources resources = {
     .ram = ram,
     .disk = disk,
