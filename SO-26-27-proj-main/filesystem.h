@@ -35,4 +35,24 @@ int file_exists(const char *path);
  */
 int absolute_path(const char *path, char *buffer, size_t size);
 
+/*
+ * ADICIONADO:
+ * Procura os ficheiros .conf existentes numa diretoria
+ * e guarda os seus nomes por ordem alfabética.
+ */
+int list_conf_files(const char *dir_path, char ***files, size_t *count);
+
+/*
+ * ADICIONADO:
+ * Liberta a memória usada pela lista de ficheiros .conf.
+ */
+void free_file_list(char **files, size_t count);
+
+/*
+ * ADICIONADO:
+ * Cria a diretoria correspondente a uma VM em /tmp/CloudIST
+ * e copia para lá os ficheiros da diretoria de input.
+ */
+int prepare_vm_filesystem(const char *reservation_id, const char *vm_id, const char *input_dir);
+
 #endif // FILESYSTEM__H

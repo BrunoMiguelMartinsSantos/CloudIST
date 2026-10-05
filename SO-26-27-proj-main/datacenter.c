@@ -121,6 +121,20 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id) {
   Reservation *res = find_pending_reservation(dc, reservation_id);
   if (!res) return 1;
 
+  /*
+   * ADICIONADO:
+   * Antes de executar as VMs, cria a diretoria de cada uma
+   * em /tmp/CloudIST/<ID_RESERVA>/<ID_VM>
+   * e copia para lá os ficheiros da diretoria de input.
+   */
+  for (size_t i = 0; i < res->num_vms; i++) {
+    VM *vm = res->vms[i];
+    if (prepare_vm_filesystem(res->id, vm->id, vm->type->input_folder) != 0) {
+        fprintf(stderr, "Failed to prepare filesystem for VM %s.\n", vm->id);
+        return 1;
+    }
+  }
+
   if (spawn_all_vms(res) != 0) return 1;
 
   res->state = RES_STATE_RUNNING;
