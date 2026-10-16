@@ -9,12 +9,22 @@
 void datacenter_init(DataCenter *dc) {
   dc->servers = NULL;
   dc->num_servers = 0;
-
+  dc->local_cores = 0; // alterado devido à nova fórmula2
   dc->num_vm_types = 0;
 
   dc->num_reservations = 0;
 
   dc->configured = 0;
+    // Exercício 2. Inicializa a 0 o número de processos filhos de VMs ativos
+    dc->active_children = 0;
+    // Inicializa a 0 (false), indicando que o datacenter não está a encerrar.
+    dc->shutting_down = 0;
+    // Inicializa o mutex para proteger o acesso aos dados partilhados;
+    // NULL indica que são usadas as configurações padrão.
+    pthread_mutex_init(&dc->mutex, NULL);
+    // Inicializa a variável de condição usada para acordar a thread
+    // que espera pelos processos filhos; NULL usa as configurações padrão. 
+    pthread_cond_init(&dc->child_cond, NULL);
 }
 
 void datacenter_destroy(DataCenter *dc) {
@@ -24,6 +34,11 @@ void datacenter_destroy(DataCenter *dc) {
     }
   }
   free(dc->servers);
+  // Exercicio 2
+  // Destrói a variável de condição usada para acordar a thread que espera pelos processos filhos das VMs.
+  pthread_cond_destroy(&dc->child_cond);
+  // Destrói o mutex utilizado para proteger os dados partilhados do datacenter contra acessos simultâneos de várias threads.
+  pthread_mutex_destroy(&dc->mutex);
 }
 
 int datacenter_configure(DataCenter *dc, size_t num_servers, Resources *resources){
@@ -122,7 +137,7 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id) {
   if (!res) return 1;
 
   /*
-   * ADICIONADO:
+   * Exercício 1 (ADICIONADO):
    * Antes de executar as VMs, cria a diretoria de cada uma
    * em /tmp/CloudIST/<ID_RESERVA>/<ID_VM>
    * e copia para lá os ficheiros da diretoria de input.
@@ -134,17 +149,9 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id) {
         return 1;
     }
   }
-
-  if (spawn_all_vms(res) != 0) return 1;
-
+  // Exercício 2: cria um processo por VM.
+  if (spawn_all_vms(dc,res) != 0) return 1;
   res->state = RES_STATE_RUNNING;
-
-  wait_for_all_vms(res);
-
-  res->state = RES_STATE_FINISHED;
-
-  reservation_destroy(dc, res);
-
   return 0;
 }
 

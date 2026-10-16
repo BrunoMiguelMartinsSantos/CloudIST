@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <sys/types.h>
+#include <pthread.h> // adicionado E2
 
 #include "resources.h"
 #include "constants.h"
@@ -68,7 +69,7 @@ typedef struct Reservation {
 typedef struct DataCenter {
 	Server *servers;			     // List of Servers.
 	size_t num_servers;              // Number of Servers.
-
+    size_t local_cores; // alterado devido à nova fórmula2
 	VMType vm_types[MAX_VM_TYPES];
     size_t num_vm_types;
 
@@ -76,6 +77,20 @@ typedef struct DataCenter {
     size_t num_reservations;
 
 	int configured;		      // Wheter the datacenter is configured or not.
+
+    /* Exercício 2 */
+    /* Impede que a thread principal e a thread de espera
+       alterem o DataCenter ao mesmo tempo. */
+    pthread_mutex_t mutex;
+    /* Permite pôr a thread de espera a dormir enquanto
+       ainda não existem processos de VMs para esperar. */
+    pthread_cond_t child_cond;
+    /* Número de processos de VMs que ainda estão ativos. */
+    size_t active_children;
+     /* Indica que todos os ficheiros .conf já foram processados
+       e que não serão criadas mais VMs. */
+    int shutting_down;
+
 } DataCenter;
 
 /**

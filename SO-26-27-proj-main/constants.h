@@ -9,4 +9,4 @@
 #define MAX_RESERVATIONS_ITEMS 32
 #define MAX_RESERVATION_VMS    128
 
-#define BUF_SIZE 1024 // Constante nova
+#define BUF_SIZE 1024 // Constante nova (Exercício 1)

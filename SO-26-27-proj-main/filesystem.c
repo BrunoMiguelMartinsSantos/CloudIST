@@ -9,8 +9,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
-#include <dirent.h>  // ADICIONADO: opendir(), readdir(), closedir()
-#include <errno.h>   // ADICIONADO: errno e EEXIST
+#include <dirent.h>  // ADICIONADO1: opendir(), readdir(), closedir()
+#include <errno.h>   // ADICIONADO1: errno e EEXIST
 #include "constants.h"
 
 int path_exists(const char *path){
@@ -48,7 +48,7 @@ int absolute_path(const char *path, char *buffer, size_t size){
   return 0;
 }
 
-// ADICIONADO: Verifica se o nome do ficheiro termina em ".conf".
+// ADICIONADO1: Verifica se o nome do ficheiro termina em ".conf".
 static int has_conf_extension(const char *name) {
     size_t len = strlen(name);
     const char *extension = ".conf";
@@ -58,82 +58,41 @@ static int has_conf_extension(const char *name) {
     return strcmp(name + len - extension_len, extension) == 0;
 }
 /*
- * ADICIONADO:
- * Função de comparação utilizada pelo qsort()
- * para ordenar alfabeticamente os nomes.
+ * ADICIONADO1:
+ * Liberta os nomes dos ficheiros e depois o próprio vetor que os contém.
  */
-static int compare_names(const void *a, const void *b) {
-    const char *const *name_a = a;
-    const char *const *name_b = b;
-    return strcmp(*name_a, *name_b);
-}
-/*
- * ADICIONADO:
- * Liberta os nomes dos ficheiros e depois
- * o próprio vetor que os contém.
- */
-void free_file_list(char **files, size_t count) {
-    for (size_t i = 0; i < count; i++)
+void free_file_list(struct dirent **files, int count) {
+    /* Liberta cada entrada criada pelo scandir(). */
+    for (int i = 0; i < count; i++)
         free(files[i]);
+    /* Liberta o vetor de entradas. */
     free(files);
 }
+
+/* Adicionado1: Aceita apenas entradas cujo nome termina em ".conf". */
+static int is_conf(const struct dirent *entry) {
+    return has_conf_extension(entry->d_name);
+}
+
 /*
- * ADICIONADO:
- * Percorre uma diretoria, guarda apenas os ficheiros .conf
- * e ordena os seus nomes alfabeticamente.
+ * ADICIONADO1:
+ * Percorre uma diretoria, guarda apenas os ficheiros .conf e ordena os seus nomes alfabeticamente.
  */
-int list_conf_files(const char *dir_path, char ***files, size_t *count) {
-    // Abre a diretoria recebida em INPUT_DIR.
-    DIR *dir = opendir(dir_path);
-    if (dir == NULL)
+int list_conf_files(const char *dir_path, struct dirent ***files, int *count) {
+    // Percorre a diretoria, guarda apenas os ficheiros .conf e ordena-os alfabeticamente.
+    int n = scandir(dir_path, files, is_conf, alphasort);
+    if (n < 0) {
+        perror("scandir");
         return 1;
-    // vai ser o vetor onde vais guardar os nomes dos ficheiros encontrados
-    char **result = NULL;
-    size_t result_count = 0;
-    // variável que vai apontar para a entrada atual da diretoria
-    struct dirent *entry;
-    // Percorre todas as entradas da diretoria.
-    while ((entry = readdir(dir)) != NULL) {
-         // Ignora tudo o que não termina em .conf.
-        if (!has_conf_extension(entry->d_name))
-            continue;
-        char full_path[MAX_PATH_SIZE];
-        // constrói a string com este formato e guarda-a em full_path
-        snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
-        if (!file_exists(full_path))
-          continue;
-        // Reserva memória para guardar uma cópia do nome do ficheiro.
-        char *name_copy = strdup(entry->d_name);
-        if (name_copy == NULL) {
-            free_file_list(result, result_count);
-            closedir(dir);
-            return 1;
-        }
-        // Aumenta o vetor para caber mais um nome.
-        char **new_result = realloc(result, (result_count + 1) * sizeof(char *));
-        if (new_result == NULL) {
-            free(name_copy);
-            free_file_list(result, result_count);
-            closedir(dir);
-            return 1;
-        }
-        result = new_result;
-        result[result_count] = name_copy;
-        result_count++;
     }
-    closedir(dir);
-    // ADICIONADO: Ordena alfabeticamente os .conf
-    qsort(result, result_count, sizeof(char *), compare_names);
-    // Devolve ao main a lista e o número de ficheiros encontrados.
-    *files = result;
-    *count = result_count;
+    *count = n;
     return 0;
 }
-/*
- * ADICIONADO:
- * Cria uma diretoria.
- * Se já existir uma diretoria com esse nome, não é considerado erro.
- */
+
+/**
+ * Adicionado1:
+ * Cria uma diretoria. Se já existir uma diretoria com esse nome, não é considerado erro.
+*/
 static int create_directory(const char *path) {
     if (mkdir(path, S_IRWXU) == 0)
         return 0;
@@ -141,8 +100,9 @@ static int create_directory(const char *path) {
         return 0;
     return 1;
 }
+
 /*
- * ADICIONADO: Copia um ficheiro usando descritores POSIX:
+ * ADICIONADO1: Copia um ficheiro usando descritores POSIX:
  * open(), read(), write() e close().
  * src -> ficheiro de onde se vai copiar
  * dst -> ficheiro para onde se vai copiar
@@ -161,8 +121,7 @@ static int copy_file(const char *src, const char *dst) {
     while ((bytes_read = read(src_fd, buffer, sizeof(buffer))) > 0) {
         ssize_t total_written = 0;
         while (total_written < bytes_read) {
-            ssize_t bytes_written =
-                write(dst_fd, buffer + total_written, (size_t)(bytes_read - total_written));
+            ssize_t bytes_written = write(dst_fd, buffer + total_written, (size_t)(bytes_read - total_written));
             if (bytes_written <= 0) {
                 close(src_fd);
                 close(dst_fd);
@@ -178,13 +137,12 @@ static int copy_file(const char *src, const char *dst) {
     return 0;
 }
 /*
- * ADICIONADO:
+ * ADICIONADO1:
  * Copia recursivamente todo o conteúdo de uma diretoria, preservando os seus subdiretórios.
 */
 static int copy_directory_contents(const char *src, const char *dst) {
     DIR *dir = opendir(src);
-    if (dir == NULL)
-        return 1;
+    if (dir == NULL) return 1;
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
         /* Ignora a própria diretoria e a diretoria pai.
@@ -226,27 +184,25 @@ static int copy_directory_contents(const char *src, const char *dst) {
     closedir(dir);
     return 0;
 }
+
 /*
- * ADICIONADO: Cria a diretoria correspondente à VM:
+ * ADICIONADO1: Cria a diretoria correspondente à VM:
  * /tmp/CloudIST/<ID_RESERVA>/<ID_VM> e copia para lá todo o conteúdo de input_dir.
  */
 int prepare_vm_filesystem(const char *reservation_id, const char *vm_id, const char *input_dir) {
     char reservation_dir[MAX_PATH_SIZE];
     char vm_dir[MAX_PATH_SIZE];
     // Cria a diretoria base.
-    if (create_directory("/tmp/CloudIST") != 0)
-        return 1;
+    if (create_directory("/tmp/CloudIST") != 0) return 1;
     // Exemplo: /tmp/CloudIST/R1
     snprintf(reservation_dir, sizeof(reservation_dir), "/tmp/CloudIST/%s", reservation_id);
-    if (create_directory(reservation_dir) != 0)
-        return 1;
+    if (create_directory(reservation_dir) != 0) return 1;
     // Constrói o caminho /tmp/CloudIST/<ID_RESERVA>/<ID_VM>
     // e guarda em written o número de caracteres necessários para o caminho.
     int written = snprintf(vm_dir, sizeof(vm_dir), "%s/%s", reservation_dir, vm_id);
     if (written < 0 || (size_t)written >= sizeof(vm_dir))
         return 1;
-    if (create_directory(vm_dir) != 0)
-        return 1;
+    if (create_directory(vm_dir) != 0) return 1;
     // Copia os ficheiros de input para a diretoria da VM.
     return copy_directory_contents(input_dir, vm_dir);
 }

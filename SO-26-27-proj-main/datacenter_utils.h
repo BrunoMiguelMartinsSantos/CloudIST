@@ -78,7 +78,12 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation);
  *
  * @param vm Pointer to the VM being spawned.
  */
-void spawn_vm_child(VM *vm);
+/**
+ * Exercicio 2:
+ * Executa no processo filho, aplica os limites de RAM e disco
+ * e lança a aplicação da VM através do cpulimit.
+ */
+void spawn_vm_child(VM *vm, size_t num_servers, size_t local_cores); // nova alteracao devido à nova formula2
 
 /**
  * Forks one child per VM in the reservation, calling spawn_vm_child()
@@ -89,15 +94,15 @@ void spawn_vm_child(VM *vm);
  * @return 0 on success.
  * @return 1 if any fork() call fails.
  */
-int spawn_all_vms(Reservation *res);
+// Exercicio 2 (Alterado): Creates one child process for each VM in the reservation.
+int spawn_all_vms(DataCenter *dc, Reservation *res);
 
-/**
- * Blocks until every VM's process has exited, updating each VM's state
- * to VM_STATE_TERMINATED as its pid is reaped.
- *
- * @param res Pointer to the Reservation whose VMs should be waited on.
+/** Exercicio 2 (Alterado)
+ Foi removida void wait_for_all_vms(Reservation *res);
+ pois a espera passa a ser feita exclusivamente pela nova thread
+ Thread responsible for waiting for terminated VM processes.
  */
-void wait_for_all_vms(Reservation *res);
+void *vm_wait_thread(void *arg);
 
 /**
  * Converts a VM state to a human-readable string. Used by datacenter_list().
