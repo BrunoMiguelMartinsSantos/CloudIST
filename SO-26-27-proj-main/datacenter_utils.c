@@ -19,14 +19,7 @@ VMType *VMType_exists(DataCenter *dc, const char* type_id){
 }
 
 /**
- * Checks if a reservation with the given id already exists in the Data Center.
- * 
- * @param dc Pointer to Data Center.
- * @param reservation_id Id of the reservation being checked.
- * 
- * @return 1 if the reservation exists.
- * @return 0 if the reservation does not exist.
- */	
+Apagada (Exercicio 3)
 static int reservation_exists(DataCenter *dc, const char* reservation_id){
 	for(size_t i = 0; i < dc->num_reservations; i++){
 		if(strncmp(reservation_id, dc->reservations[i].id, MAX_STRING_SIZE) == 0){
@@ -35,71 +28,65 @@ static int reservation_exists(DataCenter *dc, const char* reservation_id){
 	}
 	return 0;
 }
+*/
 
+/**
+ * Alterada Exercicio 3 (sincronizacao)
+ */
 int reservation_validate(DataCenter *dc, Reservation *reservation) {
-	if(reservation_exists(dc, reservation->id)){
-		fprintf(stderr, "Reservation with id %s already exists.\n", reservation->id);
-		return 1;
-	}
-
-	Resources available[dc->num_servers];
-	size_t hosted_count[dc->num_servers];
-	size_t vms_count = 0;
-
-	/* Copy current server resources and hosted_vms so we can simulate the allocation. */
-	for (size_t i = 0; i < dc->num_servers; i++) {
-		available[i] = dc->servers[i].available;
-		hosted_count[i] = dc->servers[i].num_hosted_vms;
-	}
-
-	for (size_t i = 0; i < reservation->items_count; i++) {
-		ReservationItem *item = &reservation->items[i];
-
-		if (item->amount == 0) {
-			fprintf(stderr, "Reservation item must request at least one VM.\n");
-			return 1;
-		}
-
-		VMType *vm_type = VMType_exists(dc, item->vm_type_id);
-
-		if(vm_type == NULL){
-			fprintf(stderr, "VM of type %s does not exist\n", item->vm_type_id);
-			return 1;
-		}
-
-		if (item->server_id == 0 || item->server_id > dc->num_servers) {
-			fprintf(stderr, "Invalid server in reservation.\n");
-			return 1;
-		}
-
-		for (size_t j = 0; j < item->amount; j++) {
-			if(vms_count >= MAX_RESERVATION_VMS){
-				fprintf(stderr, "Reached max of VMS for a reservation.\n");
-				return 1;
-			}
-			
-			if (hosted_count[item->server_id - 1] >= MAX_HOSTED_VMS) {
-        fprintf(stderr,
-                "Server \"%zu\" reached the maximum number of hosted VMs.\n",
-                item->server_id);
-        return 1;
-    	}
-
-			if (!resources_can_fit(available[item->server_id-1], vm_type->required)) {
-				fprintf(stderr, "Server \"%zu\" does not have enough resources.\n", item->server_id);
-				return 1;
-			}
-
-			resources_sub(&available[item->server_id-1], vm_type->required);
-			hosted_count[item->server_id-1]++;
-			vms_count++; // One VM "reserved"
-		}
-
-		// Attach vm_type to item for later use.
-		item->vm_type = vm_type;
-	}
-
-	return 0;
+    // Estado temporário apenas para os servidores realmente utilizados pela reserva.
+    Resources available[dc->num_servers];
+    size_t hosted_count[dc->num_servers];
+    int initialized[dc->num_servers];
+    memset(initialized, 0, sizeof(initialized));
+    size_t vms_count = 0;
+    for (size_t i = 0; i < reservation->items_count; i++) {
+        ReservationItem *item = &reservation->items[i];
+        if (item->amount == 0) {
+			pthread_mutex_lock(&dc->output_mutex);
+            fprintf(stderr, "Reservation item must request at least one VM.\n");
+			pthread_mutex_unlock(&dc->output_mutex);
+            return 1;
+        }
+        // E3 sincronização: o tipo já foi obtido em datacenter_reserve().
+        VMType *vm_type = item->vm_type;
+        size_t server_index = item->server_id - 1;
+        /*
+         * Copia o estado inicial deste servidor apenas
+         * da primeira vez que aparece na reserva.
+         * O mutex deste servidor já está bloqueado.
+         */
+        if (!initialized[server_index]) {
+            available[server_index] = dc->servers[server_index].available;
+            hosted_count[server_index] = dc->servers[server_index].num_hosted_vms;
+            initialized[server_index] = 1;
+        }
+        for (size_t j = 0; j < item->amount; j++) {
+            if (vms_count >= MAX_RESERVATION_VMS) {
+				pthread_mutex_lock(&dc->output_mutex);
+                fprintf(stderr, "Reached max of VMS for a reservation.\n");
+				pthread_mutex_unlock(&dc->output_mutex);
+                return 1;
+            }
+            if (hosted_count[server_index] >=
+                MAX_HOSTED_VMS) {
+				pthread_mutex_lock(&dc->output_mutex);
+                fprintf(stderr, "Server \"%zu\" reached the maximum number of hosted VMs.\n", item->server_id);
+				pthread_mutex_unlock(&dc->output_mutex);
+                return 1;
+            }
+            if (!resources_can_fit(available[server_index], vm_type->required)) {
+				pthread_mutex_lock(&dc->output_mutex);
+                fprintf(stderr, "Server \"%zu\" does not have enough resources.\n", item->server_id);
+				pthread_mutex_unlock(&dc->output_mutex);
+                return 1;
+            }
+            resources_sub(&available[server_index], vm_type->required);
+            hosted_count[server_index]++;
+            vms_count++;
+        }
+    }
+    return 0;
 }
 
 /**
@@ -142,7 +129,9 @@ int reservation_commit(DataCenter *dc, Reservation *reservation){
 		for (size_t j = 0; j < item->amount; j++) {
 			VM *new_vm = calloc(1, sizeof(VM));
 			if (new_vm == NULL) {
+				pthread_mutex_lock(&dc->output_mutex); // E3
 				fprintf(stderr, "Failed to allocate VM.\n");
+				pthread_mutex_unlock(&dc->output_mutex); // E3
 				reservation_rollback(reservation, initial_vms);
 				return 1;
 			}
@@ -181,12 +170,16 @@ Reservation *find_pending_reservation(DataCenter *dc, const char *reservation_id
 	}
 
 	if (!res) {
+		pthread_mutex_lock(&dc->output_mutex); // E3
 		fprintf(stderr, "Reservation ID %s not found.\n", reservation_id);
+		pthread_mutex_unlock(&dc->output_mutex);
 		return NULL;
 	}
 
 	if (res->state != RES_STATE_PENDING) {
+		pthread_mutex_lock(&dc->output_mutex); // E3
 		fprintf(stderr, "Reservation ID %s is not in a pending state.\n", reservation_id);
+		pthread_mutex_unlock(&dc->output_mutex);
 		return NULL;
 	}
 
@@ -198,7 +191,8 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 	for (size_t i = 0; i < reservation->num_vms; i++) {
 		VM *vm = reservation->vms[i];
 		Server *server = vm->server;
-
+		// E3 sincronização: impede uma reserva de alterar este servidor enquanto estamos a devolver recursos.
+		pthread_mutex_lock(&server->mutex);
 		// Return the VM resources back to the hosting server.
 		resources_add(&server->available, vm->type->required);
 
@@ -214,11 +208,12 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 				break;
 			}
 		}
-
+        // E3 sincronização: já terminámos de alterar este servidor.
+        pthread_mutex_unlock(&server->mutex);
+		// Liberta a estrutura da VM.
 		free(vm);
 		reservation->vms[i] = NULL;
 	}
-
 	reservation->num_vms = 0;
 
 	// Find the reservation inside the Data Center reservation list.
@@ -243,9 +238,21 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 // Exercicio 2
 // Recebe a VM, o número de servidores do centro de dados
 // e o número de cores locais atribuídos ao CloudIST.
-void spawn_vm_child(VM *vm, size_t num_servers, size_t local_cores) { // nova alteracao devido à nova formula2
+void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size_t local_cores) { // nova alteracao devido à nova formula2
 	// TODO: Limit RAM, DISK and use exec with cpulimit.
 	// Cria uma estrutura que guarda os limites mínimo e máximo de recursos.
+	/* E2:
+	* A aplicação da VM deve executar dentro da diretoria criada para essa VM.
+	*/
+	char vm_dir[MAX_PATH_SIZE];
+	int written = snprintf(vm_dir, sizeof(vm_dir), "/tmp/CloudIST/%s/%s", reservation_id, vm->id);
+	if (written < 0 || (size_t)written >= sizeof(vm_dir)) {
+		_exit(1);
+	}
+	if (chdir(vm_dir) != 0) {
+		perror("chdir");
+		_exit(1);
+	}
 	struct rlimit lim;
 	// Obtém a RAM necessária em GB, converte-a para rlim_t e multiplica por 2^30 para obter bytes.
 	lim.rlim_cur = (rlim_t)vm->type->required.ram << 30;
@@ -298,11 +305,13 @@ int spawn_all_vms(DataCenter *dc, Reservation *res) {
 		// Cria um processo filho; retorna -1 se falhar, 0 no filho e o PID do filho no pai.
 		pid_t pid = fork();
         if (pid < 0) {
-            perror("fork");
+            pthread_mutex_lock(&dc->output_mutex); // E3
+			perror("fork");
+			pthread_mutex_unlock(&dc->output_mutex);
             return 1;
         }
 		// No processo filho, configura os limites de recursos e executa a VM através do cpulimit.
-        if (pid == 0) spawn_vm_child(vm, dc->num_servers, dc->local_cores); // nova alteracao devido à nova formula2
+        if (pid == 0) spawn_vm_child(vm, res->id, dc->num_servers, dc->local_cores); // nova alteracao devido à nova formula2
         // Processo pai: guarda o PID do filho e marca a VM como em execução.
         vm->pid = pid;
         vm->state = VM_STATE_RUNNING;
@@ -337,6 +346,8 @@ static void destroy_finished_vm(DataCenter *dc, pid_t pid) {
             }
 			// Obtém o servidor físico onde a VM estava alojada.
             Server *server = vm->server;
+			/* E3 sincronização */
+			pthread_mutex_lock(&server->mutex);
             // Devolve ao servidor os recursos (RAM, disco e CPU)
 			// que estavam reservados para esta VM.
             resources_add(&server->available, vm->type->required);
@@ -369,6 +380,10 @@ static void destroy_finished_vm(DataCenter *dc, pid_t pid) {
                     break;
                 }
             }
+			/* E3 sincronização:
+			* já terminámos de alterar este servidor.
+			*/
+			pthread_mutex_unlock(&server->mutex);
 			// Remove a VM da lista da reserva, deslocando
             // os ponteiros seguintes uma posição para a esquerda.
             // Destino: &res->vms[j]
@@ -425,23 +440,24 @@ void *vm_wait_thread(void *arg) {
             // volta ao início do ciclo para tentar novamente.
             if (errno == EINTR)
                 continue;
+			 pthread_mutex_lock(&dc->output_mutex); // E3
 			// Apresenta a mensagem de erro associada a wait().
             perror("wait");
+			pthread_mutex_unlock(&dc->output_mutex); // E3
 			// Volta ao início do ciclo para continuar a monitorização.
             continue;
         }
-		// Bloqueia o mutex porque vai alterar estruturas
-        // partilhadas do datacenter.
-        pthread_mutex_lock(&dc->mutex);
-		// Procura a VM correspondente ao PID terminado,
-        // remove-a e liberta os recursos que utilizava.
-        destroy_finished_vm(dc, pid);
-		// Decrementa o contador de processos filhos ativos,
-        // porque um deles terminou.
-        dc->active_children--;
-		// Desbloqueia o mutex, permitindo que outras threads
-        // voltem a aceder aos dados partilhados.
-        pthread_mutex_unlock(&dc->mutex);
+		/*
+		* E3 sincronização: estamos prestes a alterar o estado que o comando L pode observar.
+		* Read lock permite que outras alterações independentes ocorram, mas impede L de começar a listar a meio desta operação.
+		*/
+		pthread_rwlock_rdlock(&dc->state_lock);
+		pthread_mutex_lock(&dc->mutex);
+		destroy_finished_vm(dc, pid);
+		dc->active_children--;
+		pthread_mutex_unlock(&dc->mutex);
+		// Terminou a alteração do estado.
+		pthread_rwlock_unlock(&dc->state_lock);
     }
 }
 

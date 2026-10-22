@@ -39,6 +39,12 @@ typedef struct Server {
 
 	VM *hosted_vms[MAX_HOSTED_VMS];
     size_t num_hosted_vms;
+    /*
+     * E3 sincronização:
+     * Protege os recursos e a lista de VMs deste servidor.
+     * Servidores diferentes podem ser alterados em paralelo.
+     */
+    pthread_mutex_t mutex;
 } Server;
 
 typedef enum {
@@ -79,8 +85,10 @@ typedef struct DataCenter {
 	int configured;		      // Wheter the datacenter is configured or not.
 
     /* Exercício 2 */
-    /* Impede que a thread principal e a thread de espera
-       alterem o DataCenter ao mesmo tempo. */
+    /* E3
+    * Protege informação global partilhada do DataCenter,
+    * como reservas, tipos de VM e controlo dos processos filhos.
+    */
     pthread_mutex_t mutex;
     /* Permite pôr a thread de espera a dormir enquanto
        ainda não existem processos de VMs para esperar. */
@@ -90,7 +98,17 @@ typedef struct DataCenter {
      /* Indica que todos os ficheiros .conf já foram processados
        e que não serão criadas mais VMs. */
     int shutting_down;
-
+    /*
+     * E3 sincronização:
+     * Operações que alteram o DataCenter usam read lock.
+     * O comando L usa write lock, garantindo uma fotografia consistente.
+     */
+    pthread_rwlock_t state_lock;
+    /*
+     * E3 sincronização:
+     * Evita que o output de várias worker threads fique entrelaçado.
+     */
+    pthread_mutex_t output_mutex;
 } DataCenter;
 
 /**

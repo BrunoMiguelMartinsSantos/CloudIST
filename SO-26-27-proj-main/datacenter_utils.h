@@ -83,7 +83,7 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation);
  * Executa no processo filho, aplica os limites de RAM e disco
  * e lança a aplicação da VM através do cpulimit.
  */
-void spawn_vm_child(VM *vm, size_t num_servers, size_t local_cores); // nova alteracao devido à nova formula2
+void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size_t local_cores); // nova alteracao devido à nova formula2
 
 /**
  * Forks one child per VM in the reservation, calling spawn_vm_child()
