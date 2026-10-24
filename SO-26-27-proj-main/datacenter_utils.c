@@ -6,8 +6,8 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/resource.h>
-#include <pthread.h> // Exercicio 2
-#include <errno.h> // Exercicio 2
+#include <pthread.h>
+#include <errno.h>
 
 VMType *VMType_exists(DataCenter *dc, const char* type_id){
 	for(size_t i = 0; i < dc->num_vm_types; i++){
@@ -18,28 +18,16 @@ VMType *VMType_exists(DataCenter *dc, const char* type_id){
 	return NULL;
 }
 
-/**
-Apagada (Exercicio 3)
-static int reservation_exists(DataCenter *dc, const char* reservation_id){
-	for(size_t i = 0; i < dc->num_reservations; i++){
-		if(strncmp(reservation_id, dc->reservations[i].id, MAX_STRING_SIZE) == 0){
-			return 1;
-		}
-	}
-	return 0;
-}
-*/
-
-/**
- * Alterada Exercicio 3 (sincronizacao)
- */
+// Alterada Exercicio 3 (sincronizacao)
 int reservation_validate(DataCenter *dc, Reservation *reservation) {
-    // Estado temporário apenas para os servidores realmente utilizados pela reserva.
     Resources available[dc->num_servers];
     size_t hosted_count[dc->num_servers];
+	// Indica quais os servidores cujos dados temporários já foram inicializados.
     int initialized[dc->num_servers];
+	// Inicializa todas as posições do array a 0 (não inicializados).
     memset(initialized, 0, sizeof(initialized));
     size_t vms_count = 0;
+	// Percorre os itens da reserva e verifica se cada um solicita pelo menos uma VM.
     for (size_t i = 0; i < reservation->items_count; i++) {
         ReservationItem *item = &reservation->items[i];
         if (item->amount == 0) {
@@ -48,14 +36,12 @@ int reservation_validate(DataCenter *dc, Reservation *reservation) {
 			pthread_mutex_unlock(&dc->output_mutex);
             return 1;
         }
-        // E3 sincronização: o tipo já foi obtido em datacenter_reserve().
+        // Obtém o tipo de VM associado ao item da reserva.
         VMType *vm_type = item->vm_type;
+		// Converte o ID do servidor para o índice do array (começa em 0).
         size_t server_index = item->server_id - 1;
-        /*
-         * Copia o estado inicial deste servidor apenas
-         * da primeira vez que aparece na reserva.
-         * O mutex deste servidor já está bloqueado.
-         */
+        // Copia os recursos do servidor apenas na primeira utilização,
+		// em vez de copiar inicialmente o estado de todos os servidores.
         if (!initialized[server_index]) {
             available[server_index] = dc->servers[server_index].available;
             hosted_count[server_index] = dc->servers[server_index].num_hosted_vms;
@@ -68,8 +54,7 @@ int reservation_validate(DataCenter *dc, Reservation *reservation) {
 				pthread_mutex_unlock(&dc->output_mutex);
                 return 1;
             }
-            if (hosted_count[server_index] >=
-                MAX_HOSTED_VMS) {
+            if (hosted_count[server_index] >= MAX_HOSTED_VMS) {
 				pthread_mutex_lock(&dc->output_mutex);
                 fprintf(stderr, "Server \"%zu\" reached the maximum number of hosted VMs.\n", item->server_id);
 				pthread_mutex_unlock(&dc->output_mutex);
@@ -118,6 +103,7 @@ static void reservation_rollback(Reservation *reservation, size_t initial_vms){
 	}
 }
 
+
 int reservation_commit(DataCenter *dc, Reservation *reservation){
 	// Keep track of how many vms existed before.
 	size_t initial_vms = reservation->num_vms;
@@ -159,6 +145,7 @@ int reservation_commit(DataCenter *dc, Reservation *reservation){
 	return 0;
 }
 
+
 Reservation *find_pending_reservation(DataCenter *dc, const char *reservation_id) {
 	Reservation *res = NULL;
 
@@ -186,6 +173,7 @@ Reservation *find_pending_reservation(DataCenter *dc, const char *reservation_id
 	return res;
 }
 
+
 void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 	// Free every VM belonging to the reservation.
 	for (size_t i = 0; i < reservation->num_vms; i++) {
@@ -208,7 +196,7 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 				break;
 			}
 		}
-        // E3 sincronização: já terminámos de alterar este servidor.
+        // Já terminámos de alterar este servidor.
         pthread_mutex_unlock(&server->mutex);
 		// Liberta a estrutura da VM.
 		free(vm);
@@ -235,15 +223,11 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 	dc->num_reservations--;
 }
 
-// Exercicio 2
-// Recebe a VM, o número de servidores do centro de dados
-// e o número de cores locais atribuídos ao CloudIST.
-void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size_t local_cores) { // nova alteracao devido à nova formula2
-	// TODO: Limit RAM, DISK and use exec with cpulimit.
-	// Cria uma estrutura que guarda os limites mínimo e máximo de recursos.
-	// E2: A aplicação da VM deve executar dentro da diretoria criada para essa VM.
+// Recebe a VM, o ID da reserva, o número de servidores e o número de cores locais atribuídos ao CloudIST.
+void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size_t local_cores) {
+	// Define o caminho da diretoria onde a aplicação da VM será executada.
 	char vm_dir[MAX_PATH_SIZE];
-	int written = snprintf(vm_dir, sizeof(vm_dir), "/tmp/CloudIST-13/%s/%s", reservation_id, vm->id); // acrescentei -13
+	int written = snprintf(vm_dir, sizeof(vm_dir), "/tmp/CloudIST-13/%s/%s", reservation_id, vm->id);
 	if (written < 0 || (size_t)written >= sizeof(vm_dir)) {
 		_exit(1);
 	}
@@ -251,23 +235,22 @@ void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size
 		perror("chdir");
 		_exit(1);
 	}
+	// Cria uma estrutura para definir os limites de utilização de recursos do processo.
 	struct rlimit lim;
 	// Obtém a RAM necessária em GB, converte-a para rlim_t e multiplica por 2^30 para obter bytes.
 	lim.rlim_cur = (rlim_t)vm->type->required.ram << 30;
-	// Define o limite máximo igual ao limite atual.
 	lim.rlim_max = lim.rlim_cur;
-	// Tenta limitar a memória virtual do processo; se falhar, entra no if.
+	// Tenta limitar a memória virtual do processo. se falhar, entra no if.
 	if (setrlimit(RLIMIT_AS, &lim) != 0) {
-		perror("setrlimit"); // Mostra uma mensagem de erro relativa à chamada setrlimit.
+		perror("setrlimit");
         _exit(1);
     }
     // Obtém o espaço de disco em GB e converte-o para bytes usando 2^30.
     lim.rlim_cur = (rlim_t)vm->type->required.disk << 30;
 	// Define o limite máximo de tamanho de ficheiro igual ao limite atual.
     lim.rlim_max = lim.rlim_cur;
-	// Tenta limitar o tamanho máximo de cada ficheiro criado pelo processo.
+	// Tenta limitar o tamanho máximo dos ficheiros escritos pelo processo.
     if (setrlimit(RLIMIT_FSIZE, &lim) != 0) {
-		// Apresenta o erro caso não seja possível estabelecer o limite.
         perror("setrlimit");
         _exit(1);
     }
@@ -278,38 +261,31 @@ void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size
 	double cpu_percentage = 100.0 * vm->type->required.cpu * (double)local_cores / (vm->server->total.cpu * (double)num_servers);
     // Converte a percentagem de CPU para um inteiro do tipo size_t
 	size_t cpu_limit_value = (size_t)cpu_percentage;
-	// Cria um array de caracteres para guardar a percentagem de CPU como texto.
-    char cpu_limit[MAX_STRING_SIZE];
-	// cpu_limit: array onde guardar a string; sizeof(cpu_limit): tamanho máximo; 
-	// "%zu": formato para size_t; cpu_limit_value: valor a converter.
+    char cpu_limit[MAX_STRING_SIZE]; // Cria um array de caracteres para guardar a percentagem de CPU como texto.
     snprintf(cpu_limit, sizeof(cpu_limit), "%zu", cpu_limit_value);
 	// Substitui o processo atual pelo cpulimit (procurado no PATH)
-	// Se execlp tiver sucesso, não retorna; se falhar, retorna -1.
-	execlp("cpulimit", "cpulimit", "-q", "-f", "-l",
-       cpu_limit, "--", vm->type->exec_path, (char *)NULL);
+	// Se execlp tiver sucesso, não retorna. se falhar, retorna -1.
+	execlp("cpulimit", "cpulimit", "-q", "-f", "-l", cpu_limit, "--", vm->type->exec_path, (char *)NULL);
     perror("execlp"); // Só chega aqui se o exec falhar.
     _exit(1);
 }
 
-// Exercicio 2
 // Cria os processos filhos para todas as VMs da reserva. dc: ponteiro para o datacenter; res: ponteiro para a reserva.
 // Retorna 0 se todos os forks tiverem sucesso e 1 se algum falhar.
 int spawn_all_vms(DataCenter *dc, Reservation *res) {
 	// Percorre todas as VMs da reserva.
 	for (size_t i = 0; i < res->num_vms; i++) {
-		// Obtém o ponteiro para a VM na posição i.
-		VM *vm = res->vms[i];
-		// TODO: Implement fork code. Set VM PID and update VM state to running.
+		VM *vm = res->vms[i]; // Obtém o ponteiro para a VM na posição i.
 		// Cria um processo filho; retorna -1 se falhar, 0 no filho e o PID do filho no pai.
 		pid_t pid = fork();
         if (pid < 0) {
-            pthread_mutex_lock(&dc->output_mutex); // E3
+            pthread_mutex_lock(&dc->output_mutex);
 			perror("fork");
 			pthread_mutex_unlock(&dc->output_mutex);
             return 1;
         }
 		// No processo filho, configura os limites de recursos e executa a VM através do cpulimit.
-        if (pid == 0) spawn_vm_child(vm, res->id, dc->num_servers, dc->local_cores); // nova alteracao devido à nova formula2
+        if (pid == 0) spawn_vm_child(vm, res->id, dc->num_servers, dc->local_cores);
         // Processo pai: guarda o PID do filho e marca a VM como em execução.
         vm->pid = pid;
         vm->state = VM_STATE_RUNNING;
@@ -319,22 +295,18 @@ int spawn_all_vms(DataCenter *dc, Reservation *res) {
         // Sinaliza a variável de condição para acordar a thread que espera por processos filhos.
         pthread_cond_signal(&dc->child_cond);
 	}
-	return 0; // Indica que todos os processos filhos foram criados com sucesso.
+	return 0;
 }
 
-// Exercicio 2
-// Procura uma VM pelo PID do processo terminado e remove-a,
-// libertando a memória e devolvendo os recursos ao servidor.
+// Procura uma VM pelo PID do processo terminado e remove-a, libertando a memória e devolvendo os recursos ao servidor.
 static void destroy_finished_vm(DataCenter *dc, pid_t pid) {
 	// Percorre todas as reservas existentes no datacenter.
     for (size_t i = 0; i < dc->num_reservations; i++) {
-		// Obtém o endereço da reserva na posição i.
-        Reservation *res = &dc->reservations[i];
+        Reservation *res = &dc->reservations[i]; // Obtém o endereço da reserva na posição i.
 		// Percorre todas as VMs pertencentes à reserva.
         for (size_t j = 0; j < res->num_vms; j++) {
-			// Obtém o ponteiro para a VM na posição j.
-            VM *vm = res->vms[j];
-			// Se o PID da VM for diferente do procurado, continue passa diretamente para a próxima VM.
+            VM *vm = res->vms[j]; // Obtém o ponteiro para a VM na posição j.
+			// Se o PID da VM for diferente do procurado passa diretamente para a próxima VM.
             if (vm->pid != pid)
                 continue;
             // Se a reserva tiver apenas uma VM, destrói a reserva inteira e termina a função com return.
@@ -342,62 +314,36 @@ static void destroy_finished_vm(DataCenter *dc, pid_t pid) {
                 reservation_destroy(dc, res);
                 return;
             }
-			// Obtém o servidor físico onde a VM estava alojada.
-            Server *server = vm->server;
-			/* E3 sincronização */
+            Server *server = vm->server; // Obtém o servidor físico onde a VM estava alojada.
 			pthread_mutex_lock(&server->mutex);
-            // Devolve ao servidor os recursos (RAM, disco e CPU)
-			// que estavam reservados para esta VM.
+            // Devolve ao servidor os recursos (RAM, disco e CPU) que estavam reservados para esta VM.
             resources_add(&server->available, vm->type->required);
             // Percorre a lista de VMs alojadas no servidor.
-            for (size_t k = 0;
-                 k < server->num_hosted_vms;
-                 k++) {
+            for (size_t k = 0; k < server->num_hosted_vms; k++) {
 				// Procura a posição da VM que terminou.		                
 				if (server->hosted_vms[k] == vm) {
-					// Desloca os ponteiros das VMs seguintes uma
-                    // posição para a esquerda, eliminando a VM
-                    // da lista sem deixar espaços vazios.
-                    // Destino: &server->hosted_vms[k]
-                    // Origem: &server->hosted_vms[k + 1]
-                    // Tamanho: nº de elementos seguintes * sizeof(VM *)
-                    memmove(
-                        &server->hosted_vms[k],
-                        &server->hosted_vms[k + 1],
-                        (server->num_hosted_vms - k - 1)
-                            * sizeof(VM *)
-                    );
+					// Desloca os ponteiros das VMs seguintes uma posição para a esquerda, eliminando a VM da lista sem deixar espaços vazios.
+                    memmove(&server->hosted_vms[k],&server->hosted_vms[k + 1],(server->num_hosted_vms - k - 1)*sizeof(VM *));
 					// Decrementa o número de VMs alojadas.
                     server->num_hosted_vms--;
-					// Coloca NULL na última posição utilizada
-                    // anteriormente, eliminando o ponteiro duplicado.
-                    server->hosted_vms[
-                        server->num_hosted_vms
-                    ] = NULL;
+					// Coloca NULL na última posição utilizada anteriormente, eliminando o ponteiro duplicado.
+                    server->hosted_vms[server->num_hosted_vms] = NULL;
 					 // Termina o ciclo de procura da VM no servidor.
                     break;
                 }
             }
-			/* E3 sincronização:
-			* já terminámos de alterar este servidor.
-			*/
 			pthread_mutex_unlock(&server->mutex);
-			// Remove a VM da lista da reserva, deslocando
-            // os ponteiros seguintes uma posição para a esquerda.
-            // Destino: &res->vms[j]
-            // Origem: &res->vms[j + 1]
-            // Tamanho: nº de elementos seguintes * sizeof(VM *).
+			// Remove a VM da lista da reserva, deslocando os ponteiros seguintes uma posição para a esquerda.
             memmove(&res->vms[j], &res->vms[j + 1], (res->num_vms - j - 1) * sizeof(VM *));
             res->num_vms--; // Decrementa o número de VMs da reserva.
 			// Coloca NULL na última posição anteriormente utilizada.
             res->vms[res->num_vms] = NULL;
-            free(vm); // Liberta a memória dinâmica ocupada pela estrutura VM.
-            return; // Termina a função, pois a VM pretendida já foi removida.
+            free(vm);
+            return;
         }
     }
 }
 
-// Exercicio 2
 // Função executada por uma thread responsável por esperar pela terminação
 // dos processos filhos das VMs e libertar os respetivos recursos.
 // Recebe um ponteiro genérico (void *arg) e devolve um ponteiro genérico.
@@ -406,49 +352,38 @@ void *vm_wait_thread(void *arg) {
     DataCenter *dc = (DataCenter *)arg;
 	// Ciclo infinito para continuar a monitorizar os processos filhos.
     while (1) {
-		// Bloqueia o mutex para aceder com segurança às variáveis
-        // partilhadas active_children e shutting_down.
+		// Bloqueia o mutex para aceder com segurança às variáveis partilhadas active_children e shutting_down.
         pthread_mutex_lock(&dc->mutex);
-        // Enquanto não existirem filhos ativos e o programa não
-        // estiver a encerrar, a thread fica à espera.
+        // Enquanto não existirem filhos ativos e o programa não estiver a encerrar, a thread fica à espera.
         while (dc->active_children == 0 && !dc->shutting_down) {
 			// Adormece a thread, libertando temporariamente o mutex.
-            // Quando for acordada, volta a adquirir o mutex
-            // antes de continuar a execução.
+            // Quando for acordada, volta a adquirir o mutex antes de continuar a execução.
             pthread_cond_wait(&dc->child_cond, &dc->mutex);
 		}
-        // Se o datacenter estiver a encerrar e não existirem
-        // processos filhos ativos, a thread pode terminar.
+        // Se o datacenter estiver a encerrar e não existirem processos filhos ativos, a thread pode terminar.
         if (dc->shutting_down && dc->active_children == 0) {
-			// Desbloqueia o mutex antes de terminar a thread.
             pthread_mutex_unlock(&dc->mutex);
-			// Termina a thread, devolvendo NULL.
             return NULL;
         }
-		// Liberta o mutex para não bloquear outras threads
-        // enquanto espera pela terminação de um processo filho.
+		// Liberta o mutex para não bloquear outras threads enquanto espera pela terminação de um processo filho.
         pthread_mutex_unlock(&dc->mutex);
         // Espera de forma bloqueante pela terminação de um processo filho.
-        // Retorna o PID do filho terminado ou -1 em caso de erro.
-        // Apenas esta thread fica bloqueada, não a thread principal.
+        // Retorna o PID do filho terminado ou -1 em caso de erro. Apenas esta thread fica bloqueada, não a thread principal.
         pid_t pid = wait(NULL);
 		// Verifica se a chamada wait() falhou.
         if (pid < 0) {
-			// Se wait() foi interrompido por um sinal (EINTR),
-            // volta ao início do ciclo para tentar novamente.
+			// Se wait() foi interrompido por um sinal (EINTR), volta ao início do ciclo para tentar novamente.
             if (errno == EINTR)
                 continue;
-			 pthread_mutex_lock(&dc->output_mutex); // E3
-			// Apresenta a mensagem de erro associada a wait().
+			pthread_mutex_lock(&dc->output_mutex);
             perror("wait");
-			pthread_mutex_unlock(&dc->output_mutex); // E3
-			// Volta ao início do ciclo para continuar a monitorização.
+			pthread_mutex_unlock(&dc->output_mutex);
             continue;
         }
 		/*
-		* E3 sincronização: estamos prestes a alterar o estado que o comando L pode observar.
-		* Read lock permite que outras alterações independentes ocorram, mas impede L de começar a listar a meio desta operação.
-		*/
+ 		* Permite alterações concorrentes ao estado do Data Center,
+ 		* impedindo que o comando L inicie a listagem durante estas operações.
+ 		*/
 		pthread_rwlock_rdlock(&dc->state_lock);
 		pthread_mutex_lock(&dc->mutex);
 		destroy_finished_vm(dc, pid);
@@ -459,6 +394,7 @@ void *vm_wait_thread(void *arg) {
     }
 }
 
+
 const char *vm_state_to_string(VMState state) {
     switch (state) {
         case VM_STATE_RESERVED:   return "RESERVED";
@@ -467,6 +403,7 @@ const char *vm_state_to_string(VMState state) {
         default:                  return "UNKNOWN";
     }
 }
+
 
 const char *res_state_to_string(ReservationState state) {
     switch (state) {

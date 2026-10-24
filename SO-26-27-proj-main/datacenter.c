@@ -9,23 +9,20 @@
 void datacenter_init(DataCenter *dc) {
   dc->servers = NULL;
   dc->num_servers = 0;
-  dc->local_cores = 0; // alterado devido à nova fórmula
+  dc->local_cores = 0;
   dc->num_vm_types = 0;
-
   dc->num_reservations = 0;
-
   dc->configured = 0;
-  // Exercício 2
   dc->active_children = 0;
-  dc->shutting_down = 0; // Inicializa a 0 (false), indicando que o datacenter não está a encerrar.
+  dc->shutting_down = 0; // Inicializa a 0, indicando que o datacenter não está a encerrar.
   // Inicializa o mutex para proteger o acesso aos dados partilhados. NULL indica que são usadas as configurações padrão.
   pthread_mutex_init(&dc->mutex, NULL);
   // Inicializa a variável de condição usada para acordar a thread que espera pelos processos filhos
   pthread_cond_init(&dc->child_cond, NULL);
-  // Exercício 3 sincronização.
   pthread_rwlock_init(&dc->state_lock, NULL);
   pthread_mutex_init(&dc->output_mutex, NULL);
 }
+
 
 void datacenter_destroy(DataCenter *dc) {
   for (size_t i = 0; i < dc->num_servers; i++) {
@@ -43,6 +40,7 @@ void datacenter_destroy(DataCenter *dc) {
   pthread_rwlock_destroy(&dc->state_lock);
   pthread_mutex_destroy(&dc->output_mutex);
 }
+
 
 int datacenter_configure(DataCenter *dc, size_t num_servers, Resources *resources){
   if(dc->configured){
@@ -67,15 +65,15 @@ int datacenter_configure(DataCenter *dc, size_t num_servers, Resources *resource
     dc->servers[i].total = *resources;
     dc->servers[i].available = *resources;
     dc->servers[i].num_hosted_vms = 0;
-    // Exercício 3 sincronização: cada servidor tem o seu próprio mutex.
+    // Exercício 3: cada servidor tem o seu próprio mutex.
     pthread_mutex_init(&dc->servers[i].mutex, NULL);
   }
 
   dc->num_servers = num_servers;
   dc->configured = 1;
-
   return 0;
 }
+
 
 int datacenter_define_VM(DataCenter *dc, VMType *type){
   if (!dc->configured) {
@@ -98,7 +96,7 @@ int datacenter_define_VM(DataCenter *dc, VMType *type){
     pthread_mutex_unlock(&dc->output_mutex);
     return 1;
   }
-  // E2: Guarda o caminho absoluto do executável porque a VM vai mudar para a sua própria diretoria antes do exec.
+  // Guarda o caminho absoluto do executável porque a VM vai mudar para a sua própria diretoria antes do exec.
   char absolute_exec[MAX_PATH_SIZE];
   if (absolute_path(type->exec_path, absolute_exec, sizeof(absolute_exec)) != 0) {
     pthread_mutex_lock(&dc->output_mutex);
@@ -122,26 +120,21 @@ int datacenter_define_VM(DataCenter *dc, VMType *type){
     pthread_mutex_unlock(&dc->output_mutex);
     return 1;
   }
-  
   dc->vm_types[dc->num_vm_types++] = *type;
-
   return 0;
 }
 
-// Exercício 3 sincronização: verifica se uma reserva utiliza determinado servidor.
+// Exercício 3: Verifica se uma reserva utiliza determinado servidor.
 static int reservation_uses_server(Reservation *reservation, size_t server_id) {
   // Percorre todos os itens da reserva à procura do servidor indicado.
     for (size_t i = 0; i < reservation->items_count; i++) {
-        // Se algum item da reserva usa este servidor, devolve 1 (verdadeiro).
+        // Se algum item da reserva usa este servidor, devolve 1
         if (reservation->items[i].server_id == server_id) return 1;
     }
     return 0;
 }
 
-/*
-* Exercício 3 sincronização: bloqueia apenas os servidores utilizados por esta reserva.
-* São sempre bloqueados por ordem crescente para evitar deadlock.
-*/
+// Exercício 3: Bloqueia apenas os servidores utilizados por esta reserva. São sempre bloqueados por ordem crescente para evitar deadlock.
 static void lock_reservation_servers(DataCenter *dc,Reservation *reservation) {
     for (size_t i = 0; i < dc->num_servers; i++) {
         if (reservation_uses_server(reservation,dc->servers[i].id)) {
@@ -150,7 +143,7 @@ static void lock_reservation_servers(DataCenter *dc,Reservation *reservation) {
     }
 }
 
-// E3 sincronização: liberta os servidores bloqueados pela reserva.
+// Exercíci 3: Liberta os servidores bloqueados pela reserva.
 static void unlock_reservation_servers(DataCenter *dc,Reservation *reservation) {
     // Liberta os mutexes dos servidores pela ordem inversa àquela em que foram bloqueados.
     // Bloqueámos por ordem crescente para evitar deadlocks e libertámos por ordem inversa por organização.
@@ -161,7 +154,7 @@ static void unlock_reservation_servers(DataCenter *dc,Reservation *reservation) 
     }
 }
 
-// E3 sincronização: deve ser chamada com dc->mutex bloqueado.
+// Exercício 3: Deve ser chamada com dc->mutex bloqueado.
 static int reservation_id_exists(DataCenter *dc, const char *reservation_id) {
     for (size_t i = 0; i < dc->num_reservations; i++) {
         // compara estas duas strings até, no máximo, ao tamanho máximo permitido para um ID.
@@ -172,6 +165,7 @@ static int reservation_id_exists(DataCenter *dc, const char *reservation_id) {
     return 0;
 }
 
+
 int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
   if (!dc->configured) {
     pthread_mutex_lock(&dc->output_mutex);
@@ -179,7 +173,7 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
     pthread_mutex_unlock(&dc->output_mutex);
     return 1;
   }
-  // Exercício 3 sincronização: protege temporariamente os dados globais do DataCenter enquanto validamos a reserva
+  // Protege temporariamente os dados globais do DataCenter enquanto validamos a reserva
   pthread_mutex_lock(&dc->mutex);
   // Verifica se já existe uma reserva com este ID.
   if (reservation_id_exists(dc, reservation->id)) {
@@ -217,7 +211,7 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
       }
   }
   pthread_mutex_unlock(&dc->mutex);
-  // Exercício 3: bloqueamos apenas os servidores utilizados por esta reserva.
+  // Bloqueamos apenas os servidores utilizados por esta reserva.
   lock_reservation_servers(dc, reservation);
   // Verifica se os servidores têm recursos suficientes para satisfazer a reserva.
   if (reservation_validate(dc, reservation) != 0) {
@@ -238,6 +232,7 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
   pthread_mutex_unlock(&dc->mutex);
   return 0;
 }
+
 
 int datacenter_execute(DataCenter *dc, const char *reservation_id) {
   if(!dc->configured){
@@ -261,11 +256,12 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id) {
       return 1;
     }
   }
-  // Exercício 2: cria um processo por VM.
+  // Cria um processo por VM.
   if (spawn_all_vms(dc,res) != 0) return 1;
   res->state = RES_STATE_RUNNING;
   return 0;
 }
+
 
 int datacenter_list(DataCenter *dc) {
   if (!dc->configured) {
@@ -369,6 +365,7 @@ int datacenter_list(DataCenter *dc) {
   printf("================================================================--------------------------\n\n");
   return 0;
 }
+
 
 void datacenter_wait(unsigned int delay_ms){
   struct timespec delay = (struct timespec){delay_ms / 1000, (delay_ms % 1000) * 1000000};

@@ -77,8 +77,8 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation);
  * (either execs successfully or calls exit(1) on failure).
  *
  * @param vm Pointer to the VM being spawned.
- */
-// Exercicio 2: Executa no processo filho, aplica os limites de RAM e disco* e lança a aplicação da VM através do cpulimit.
+ * Executa no processo filho, aplica os limites de RAM e disco e lança a aplicação da VM através do cpulimit.
+*/
 void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size_t local_cores); // alteracao devido à nova formula2
 
 /**
@@ -90,11 +90,10 @@ void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size
  * @return 0 on success.
  * @return 1 if any fork() call fails.
  */
-// Exercicio 2 (Alterado): Cria um processo filho por cada VM na reserva
+// Exercicio 2 (Alteração): Cria um processo filho por cada VM na reserva
 int spawn_all_vms(DataCenter *dc, Reservation *res);
 
-// Exercicio 2 (Alteração)
-// Foi removida void wait_for_all_vms(Reservation *res), pois a espera passa a ser feita exclusivamente pela nova thread
+// Exercicio 2 (Alteração): A espera passa a ser feita exclusivamente pela nova thread
 void *vm_wait_thread(void *arg);
 
 /**

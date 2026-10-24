@@ -16,16 +16,16 @@ static int process_commands(DataCenter *dc, int fd) {
 		switch (get_next_command(fd)){ // Exercício 1: STDIN_FILENO -> fd
 			case CMD_DEFINE: {
 				VMType vmtype;
-				// Exercício 1 (ALTERADO): lê os argumentos do ficheiro .conf atual
+				// Exercício 1: lê os argumentos do ficheiro .conf atual
 				if (parse_define(fd, &vmtype) != 0) {
-					// E3 sincronização: evita output entrelaçado.
+					// Exercício 3: evita output entrelaçado.
     				pthread_mutex_lock(&dc->output_mutex);
 					fprintf(stderr, "Invalid define command. See H (help) for usage.\n");
 					pthread_mutex_unlock(&dc->output_mutex);
 					continue;
 				}
 				/*
-				* E3 sincronização: D altera o estado do DataCenter.
+				* Exercício 3: D altera o estado do DataCenter.
 				* O read lock permite outras operações independentes, mas impede L de listar durante esta alteração.
 				*/
 				pthread_rwlock_rdlock(&dc->state_lock);
@@ -39,7 +39,6 @@ static int process_commands(DataCenter *dc, int fd) {
 				pthread_rwlock_unlock(&dc->state_lock);
 				// Verifica se ocorreu algum erro ao definir a VM.
 				if (result != 0) {
-					// E3 sincronização: evita output entrelaçado.
     				pthread_mutex_lock(&dc->output_mutex);
 					fprintf(stderr, "Failed to define VM.\n");
 					pthread_mutex_unlock(&dc->output_mutex);
@@ -62,7 +61,7 @@ static int process_commands(DataCenter *dc, int fd) {
 					continue;
 				}
 				/*
-				* E3 sincronização: Várias reservas podem decorrer simultaneamente.
+				* Exercício 3: Várias reservas podem decorrer simultaneamente.
 				* datacenter_reserve() faz internamente a sincronização dos servidores utilizados pela reserva.
 				*/
 				pthread_rwlock_rdlock(&dc->state_lock); // permite outras alterações em paralelo, mas impede o comando L de listar enquanto esta operação decorre.
@@ -89,7 +88,7 @@ static int process_commands(DataCenter *dc, int fd) {
 					pthread_mutex_unlock(&dc->output_mutex);
 					continue;
 				}
-				// E3 sincronização: A altera o estado que pode ser observado por L.
+				// Exercício 3: A altera o estado que pode ser observado por L.
 				pthread_rwlock_rdlock(&dc->state_lock);
 				// Exercicio 2: Bloqueia o mutex para garantir que só esta thread está a aceder ou modificar o DataCenter neste momento.
 				pthread_mutex_lock(&dc->mutex);
@@ -111,19 +110,19 @@ static int process_commands(DataCenter *dc, int fd) {
 			}
 
 			case CMD_LIST: {
-				/* E3 sincronização: L precisa de observar uma fotografia consistente de todo o DataCenter.
+				/* Exercício 3: L precisa de observar uma fotografia consistente de todo o DataCenter.
 				* O write lock espera que as alterações em curso acabem e impede novas alterações enquanto decorre a listagem.
 				*/
 				pthread_rwlock_wrlock(&dc->state_lock);
-				// E3 sincronização: impede outros outputs de aparecerem no meio da listagem.
+				// Exercício 3: impede outros outputs de aparecerem no meio da listagem.
 				pthread_mutex_lock(&dc->output_mutex);
 				// Mostra o estado atual do DataCenter e guarda o resultado da operação.
 				int result = datacenter_list(dc);
-				pthread_mutex_unlock(&dc->output_mutex); // E3
+				pthread_mutex_unlock(&dc->output_mutex);
 				// Listagem terminou. As outras threads podem voltar a alterar o estado.
 				pthread_rwlock_unlock(&dc->state_lock);
 				if (result != 0) { // Verifica se ocorreu algum erro ao listar o estado do DataCenter.
-					pthread_mutex_lock(&dc->output_mutex); // E3
+					pthread_mutex_lock(&dc->output_mutex);
 					fprintf(stderr, "Failed to list VMs.\n");
 					pthread_mutex_unlock(&dc->output_mutex);
 					continue;
@@ -135,7 +134,7 @@ static int process_commands(DataCenter *dc, int fd) {
 				unsigned int delay;
 				// Exercício 1(alterações): lê o tempo do ficheiro .conf atual
 				if(parse_wait(fd, &delay) != 0){
-					pthread_mutex_lock(&dc->output_mutex); // E3
+					pthread_mutex_lock(&dc->output_mutex);
 					fprintf(stderr, "Invalid wait command. See H (help) for usage.\n");		
 					pthread_mutex_unlock(&dc->output_mutex);
 					continue;
@@ -232,8 +231,9 @@ static void *worker_thread(void *arg) {
     }
 }
 
+
 int main(int argc, char **argv){
-	if (argc != 8) { // nova alteracao devido à nova formula2 + alteração do exercício 3
+	if (argc != 8) {
     fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <local_cores> <input_dir> <max_threads>\n", argv[0]);
     return 1;
   	}
@@ -241,8 +241,8 @@ int main(int argc, char **argv){
 	size_t ram;
 	size_t disk;
 	double cpu;
-	size_t local_cores; // alterado devido à nova fórmula2
-	size_t max_threads;   // exercício 3 (adicionado)
+	size_t local_cores;
+	size_t max_threads;
 
 	DataCenter dc;
 	datacenter_init(&dc);	
@@ -258,7 +258,7 @@ int main(int argc, char **argv){
 		return 1;
 	}
 	// Exercício1(adicionado): argv[6] contém a diretoria onde estão os ficheiros .conf.
-	char *input_dir = argv[6]; // alterado devido à nova fórmula2
+	char *input_dir = argv[6];
 	// Exercício 1: verifica se input_dir existe e corresponde a uma diretoria.
 	if (!path_exists(input_dir)) {
 		fprintf(stderr, "Invalid input directory.\n");
@@ -277,7 +277,7 @@ int main(int argc, char **argv){
 		return 1;
 	}
 	dc.local_cores = local_cores;
-	// E1(ADICIONADO): conf_files vai guardar as entradas correspondentes aos ficheiros .conf devolvidas por scandir().
+	// Exercício 1(adicionado): conf_files vai guardar as entradas correspondentes aos ficheiros .conf devolvidas por scandir().
 	struct dirent **conf_files = NULL;
 	int conf_count = 0;
 
@@ -289,10 +289,6 @@ int main(int argc, char **argv){
 	pthread_t wait_thread; // Variável onde fica guardado o identificador da nova thread.
 	// Cria a thread responsável por esperar pelos processos das VMs.
 	if (pthread_create(&wait_thread,NULL,vm_wait_thread,&dc) != 0) {
-		/* &wait_thread: Guarda aqui o identificador da thread criada. */
-		/* NULL: Usa os atributos padrão da thread. */
-		/* vm_wait_thread: Função que a nova thread vai começar a executar. */
-		/* &dc: Argumento passado para vm_wait_thread(): o endereço do DataCenter. */
 		fprintf(stderr, "Failed to create wait thread.\n");
 		// Liberta cada entrada criada pelo scandir() e depois o vetor de ponteiros.
 		free_file_list(conf_files, conf_count);
@@ -309,8 +305,8 @@ int main(int argc, char **argv){
 	pthread_mutex_init(&worker_args.work_mutex, NULL);
 	// Calcula quantas worker threads serão realmente necessárias.
 	size_t num_workers = max_threads;
-	if ((size_t)conf_count < num_workers) // se houver menos ficheiros .conf do que threads permitidas,reduzimos o número de workers.
-		num_workers = (size_t)conf_count;
+	// se houver menos ficheiros .conf do que threads permitidas,reduzimos o número de workers.
+	if ((size_t)conf_count < num_workers) num_workers = (size_t)conf_count;
 	pthread_t *workers = NULL; // ponteiro para vários pthread_t, ou seja, para guardar os identificadores de várias worker threads.
 	if (num_workers > 0) {
 		workers = malloc(num_workers * sizeof(pthread_t));
@@ -330,7 +326,7 @@ int main(int argc, char **argv){
 	size_t workers_created = 0;
 	for (size_t i = 0; i < num_workers; i++) {
 		if (pthread_create(&workers[i], NULL, worker_thread, &worker_args) != 0) {
-			// E3: já podem existir outras workers a imprimir.
+			// Exercício 3: já podem existir outras workers a imprimir.
 			pthread_mutex_lock(&dc.output_mutex);
 			fprintf(stderr, "Failed to create worker thread.\n");
 			pthread_mutex_unlock(&dc.output_mutex);
