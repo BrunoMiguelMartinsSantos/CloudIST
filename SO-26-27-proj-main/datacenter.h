@@ -39,11 +39,8 @@ typedef struct Server {
 
 	VM *hosted_vms[MAX_HOSTED_VMS];
     size_t num_hosted_vms;
-    /*
-     * E3 sincronização:
-     * Protege os recursos e a lista de VMs deste servidor.
-     * Servidores diferentes podem ser alterados em paralelo.
-     */
+    // E3 sincronização:
+    // Protege os recursos e a lista de VMs deste servidor. Servidores diferentes podem ser alterados em paralelo.
     pthread_mutex_t mutex;
 } Server;
 
@@ -83,31 +80,20 @@ typedef struct DataCenter {
     size_t num_reservations;
 
 	int configured;		      // Wheter the datacenter is configured or not.
-
-    /* Exercício 2 */
-    /* E3
-    * Protege informação global partilhada do DataCenter,
-    * como reservas, tipos de VM e controlo dos processos filhos.
+    /* Exercício 3
+    * Protege informação global partilhada do DataCenter, como reservas, tipos de VM e controlo dos processos filhos.
     */
     pthread_mutex_t mutex;
-    /* Permite pôr a thread de espera a dormir enquanto
-       ainda não existem processos de VMs para esperar. */
+    // Permite pôr a thread de espera a dormir enquanto ainda não existem processos de VMs para esperar.
     pthread_cond_t child_cond;
-    /* Número de processos de VMs que ainda estão ativos. */
+    // Número de processos de VMs que ainda estão ativos.
     size_t active_children;
-     /* Indica que todos os ficheiros .conf já foram processados
-       e que não serão criadas mais VMs. */
+    // Indica que todos os ficheiros .conf já foram processados e que não serão criadas novos processos de VMs.
     int shutting_down;
-    /*
-     * E3 sincronização:
-     * Operações que alteram o DataCenter usam read lock.
-     * O comando L usa write lock, garantindo uma fotografia consistente.
-     */
+    // E3 sincronização: Operações que alteram o DataCenter usam read lock. 
+    // O comando L usa write lock, garantindo uma fotografia consistente.
     pthread_rwlock_t state_lock;
-    /*
-     * E3 sincronização:
-     * Evita que o output de várias worker threads fique entrelaçado.
-     */
+    // E3 sincronização: Evita que o output de várias worker threads fique entrelaçado.
     pthread_mutex_t output_mutex;
 } DataCenter;
 

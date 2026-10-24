@@ -241,11 +241,9 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size_t local_cores) { // nova alteracao devido à nova formula2
 	// TODO: Limit RAM, DISK and use exec with cpulimit.
 	// Cria uma estrutura que guarda os limites mínimo e máximo de recursos.
-	/* E2:
-	* A aplicação da VM deve executar dentro da diretoria criada para essa VM.
-	*/
+	// E2: A aplicação da VM deve executar dentro da diretoria criada para essa VM.
 	char vm_dir[MAX_PATH_SIZE];
-	int written = snprintf(vm_dir, sizeof(vm_dir), "/tmp/CloudIST/%s/%s", reservation_id, vm->id);
+	int written = snprintf(vm_dir, sizeof(vm_dir), "/tmp/CloudIST-13/%s/%s", reservation_id, vm->id); // acrescentei -13
 	if (written < 0 || (size_t)written >= sizeof(vm_dir)) {
 		_exit(1);
 	}

@@ -57,10 +57,8 @@ static int has_conf_extension(const char *name) {
         return 0;
     return strcmp(name + len - extension_len, extension) == 0;
 }
-/*
- * ADICIONADO1:
- * Liberta os nomes dos ficheiros e depois o próprio vetor que os contém.
- */
+
+// ADICIONADO1: Liberta os nomes dos ficheiros e depois o próprio vetor que os contém.
 void free_file_list(struct dirent **files, int count) {
     /* Liberta cada entrada criada pelo scandir(). */
     for (int i = 0; i < count; i++)
@@ -69,7 +67,7 @@ void free_file_list(struct dirent **files, int count) {
     free(files);
 }
 
-/* Adicionado1: Aceita apenas entradas cujo nome termina em ".conf". */
+// Adicionado1: Aceita apenas entradas cujo nome termina em ".conf".
 static int is_conf(const struct dirent *entry) {
     return has_conf_extension(entry->d_name);
 }
@@ -89,10 +87,7 @@ int list_conf_files(const char *dir_path, struct dirent ***files, int *count) {
     return 0;
 }
 
-/**
- * Adicionado1:
- * Cria uma diretoria. Se já existir uma diretoria com esse nome, não é considerado erro.
-*/
+// Adicionado1: Cria uma diretoria. Se já existir uma diretoria com esse nome, não é considerado erro.
 static int create_directory(const char *path) {
     if (mkdir(path, S_IRWXU) == 0)
         return 0;
@@ -193,9 +188,9 @@ int prepare_vm_filesystem(const char *reservation_id, const char *vm_id, const c
     char reservation_dir[MAX_PATH_SIZE];
     char vm_dir[MAX_PATH_SIZE];
     // Cria a diretoria base.
-    if (create_directory("/tmp/CloudIST") != 0) return 1;
+    if (create_directory("/tmp/CloudIST-13") != 0) return 1; // acrescentei -13
     // Exemplo: /tmp/CloudIST/R1
-    snprintf(reservation_dir, sizeof(reservation_dir), "/tmp/CloudIST/%s", reservation_id);
+    snprintf(reservation_dir, sizeof(reservation_dir), "/tmp/CloudIST-13/%s", reservation_id); // acrescentei -13
     if (create_directory(reservation_dir) != 0) return 1;
     // Constrói o caminho /tmp/CloudIST/<ID_RESERVA>/<ID_VM>
     // e guarda em written o número de caracteres necessários para o caminho.

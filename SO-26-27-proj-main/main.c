@@ -10,18 +10,15 @@
 #include "constants.h"
 #include "filesystem.h" // E1(ADICIONADO): funções para obter os ficheiros .conf
 
-/*
- * Exercicio 1 (ALTERADO): Antes os comandos eram lidos de STDIN_FILENO.
- * Agora recebemos 'fd', que é o descritor do ficheiro .conf atual.
- */
+// Exercicio 1(alterações): Antes os comandos eram lidos de STDIN_FILENO. Agora recebemos 'fd', que é o descritor do ficheiro .conf atual.
 static int process_commands(DataCenter *dc, int fd) {
 	while(1){
-		switch (get_next_command(fd)){ // (E1)ALTERADO: STDIN_FILENO -> fd
+		switch (get_next_command(fd)){ // Exercício 1: STDIN_FILENO -> fd
 			case CMD_DEFINE: {
 				VMType vmtype;
 				// Exercício 1 (ALTERADO): lê os argumentos do ficheiro .conf atual
 				if (parse_define(fd, &vmtype) != 0) {
-					/* E3 sincronização: evita output entrelaçado. */
+					// E3 sincronização: evita output entrelaçado.
     				pthread_mutex_lock(&dc->output_mutex);
 					fprintf(stderr, "Invalid define command. See H (help) for usage.\n");
 					pthread_mutex_unlock(&dc->output_mutex);
@@ -32,25 +29,21 @@ static int process_commands(DataCenter *dc, int fd) {
 				* O read lock permite outras operações independentes, mas impede L de listar durante esta alteração.
 				*/
 				pthread_rwlock_rdlock(&dc->state_lock);
-				// Exercício 2
-				// Bloqueia o mutex para garantir que só esta thread está a aceder/modificar o DataCenter neste momento.
+				// Exercício 2: Bloqueia o mutex para garantir que só esta thread está a aceder ou modificar o DataCenter neste momento.
 				pthread_mutex_lock(&dc->mutex);
 				// Guarda o resultado da tentativa de definir o novo tipo de VM.
 				int result = 
-				/* Adiciona o tipo de VM ao DataCenter. Como o mutex está bloqueado, a thread de espera
-       			não pode alterar o DataCenter ao mesmo tempo. */
+				// Adiciona o tipo de VM ao DataCenter. Como o mutex está bloqueado, a thread de espera não pode alterar o DataCenter ao mesmo tempo.
 				datacenter_define_VM(dc, &vmtype);
-				// Liberta o mutex porque já terminámos de aceder ao DataCenter nesta operação.
-				pthread_mutex_unlock(&dc->mutex);
+				pthread_mutex_unlock(&dc->mutex); // Liberta o mutex porque já terminámos de aceder ao DataCenter nesta operação.
 				pthread_rwlock_unlock(&dc->state_lock);
 				// Verifica se ocorreu algum erro ao definir a VM.
 				if (result != 0) {
-					// E3 sincronização: protege apenas o output.
+					// E3 sincronização: evita output entrelaçado.
     				pthread_mutex_lock(&dc->output_mutex);
 					fprintf(stderr, "Failed to define VM.\n");
 					pthread_mutex_unlock(&dc->output_mutex);
-					// Passa imediatamente para o próximo comando do ficheiro .conf
-					continue;
+					continue; // Passa imediatamente para o próximo comando do ficheiro .conf
 				}
 				pthread_mutex_lock(&dc->output_mutex);
 				printf("VM successfully defined!\n");
@@ -60,9 +53,8 @@ static int process_commands(DataCenter *dc, int fd) {
 
 			case CMD_RESERVE: {
 				Reservation reservation = {0};
-				// Exercicio 1 (ALTERADO): lê a reserva do ficheiro .conf atual
+				// Exercicio 1(alterações): lê a reserva do ficheiro .conf atual
 				size_t num_items = parse_reserve(fd, &reservation, MAX_RESERVATIONS_ITEMS);
-
 				if (num_items == 0) {
 					pthread_mutex_lock(&dc->output_mutex); // E3
 					fprintf(stderr, "Invalid reserve command. See H (help) for usage.\n");
@@ -70,32 +62,27 @@ static int process_commands(DataCenter *dc, int fd) {
 					continue;
 				}
 				/*
-				* E3 sincronização:
-				* várias reservas podem decorrer simultaneamente.
+				* E3 sincronização: Várias reservas podem decorrer simultaneamente.
 				* datacenter_reserve() faz internamente a sincronização dos servidores utilizados pela reserva.
 				*/
-				pthread_rwlock_rdlock(&dc->state_lock);
+				pthread_rwlock_rdlock(&dc->state_lock); // permite outras alterações em paralelo, mas impede o comando L de listar enquanto esta operação decorre.
 				int result = datacenter_reserve(dc,&reservation);
 				pthread_rwlock_unlock(&dc->state_lock);
-				// Verifica se ocorreu algum erro durante a reserva
-				if (result != 0) {
-					pthread_mutex_lock(&dc->output_mutex); // E3
+				if (result != 0) { // Verifica se ocorreu algum erro durante a reserva
+					pthread_mutex_lock(&dc->output_mutex);
 					fprintf(stderr, "Failed to reserve VMs.\n");
-					pthread_mutex_unlock(&dc->output_mutex); // E3
-					// Passa para o próximo comando do ficheiro .conf.
-					continue;
+					pthread_mutex_unlock(&dc->output_mutex);
+					continue; // Passa para o próximo comando do ficheiro .conf.
 				}
-				pthread_mutex_lock(&dc->output_mutex); // E3
-				// Se não ocorreu nenhum erro, informa que a reserva foi efetuada com sucesso.
-				printf("Reservation made successfully!\n");
-				// Termina o tratamento do caso CMD_RESERVE dentro do switch.
+				pthread_mutex_lock(&dc->output_mutex);
+				printf("Reservation made successfully!\n"); // Se não ocorreu nenhum erro, informa que a reserva foi efetuada com sucesso.
 				pthread_mutex_unlock(&dc->output_mutex);
 				break;
 			}
 
 			case CMD_EXECUTE: {
 				char id[MAX_STRING_SIZE];
-				// ALTERADO: lê o ID do ficheiro .conf atual
+				// Alterado: lê o ID do ficheiro .conf atual
 				if(parse_execute(fd, id) != 0){
 					pthread_mutex_lock(&dc->output_mutex); // E3
 					fprintf(stderr, "Invalid execute command. See H (help) for usage.\n");
@@ -104,38 +91,28 @@ static int process_commands(DataCenter *dc, int fd) {
 				}
 				// E3 sincronização: A altera o estado que pode ser observado por L.
 				pthread_rwlock_rdlock(&dc->state_lock);
-				// Exercicio 2
-				// Bloqueia o mutex para garantir que só esta thread está a aceder ou modificar o DataCenter neste momento.
+				// Exercicio 2: Bloqueia o mutex para garantir que só esta thread está a aceder ou modificar o DataCenter neste momento.
 				pthread_mutex_lock(&dc->mutex);
 				// Tenta iniciar a execução da reserva indicada e guarda o resultado da operação.
 				int result = datacenter_execute(dc, id);
 				// Liberta o mutex porque a operação sobre o DataCenter já terminou.
 				pthread_mutex_unlock(&dc->mutex);
 				pthread_rwlock_unlock(&dc->state_lock);
-				// Verifica se ocorreu algum erro ao iniciar a execução da reserva.
-				if (result != 0) {
+				if (result != 0) { // Verifica se ocorreu algum erro ao iniciar a execução da reserva.
 					pthread_mutex_lock(&dc->output_mutex); // E3
 					fprintf(stderr, "Failed to execute reservation.\n");
-					// Passa para o próximo comando do ficheiro .conf
 					pthread_mutex_unlock(&dc->output_mutex);
 					continue;
 				}
 				pthread_mutex_lock(&dc->output_mutex); // E3
-				/* Informa que a execução da reserva foi iniciada.
-   				Não diz "finished", porque as VMs continuam a executar nos processos filhos. */
 				printf("Finished reservation execution!\n");
 				pthread_mutex_unlock(&dc->output_mutex); // E3
-				// Termina o tratamento do caso CMD_EXECUTE dentro do switch.
 				break;
 			}
 
 			case CMD_LIST: {
-				/*
-				* E3 sincronização:
-				* L precisa de observar uma fotografia consistente
-				* de todo o DataCenter.
-				* O write lock espera que as alterações em curso acabem
-				* e impede novas alterações enquanto decorre a listagem.
+				/* E3 sincronização: L precisa de observar uma fotografia consistente de todo o DataCenter.
+				* O write lock espera que as alterações em curso acabem e impede novas alterações enquanto decorre a listagem.
 				*/
 				pthread_rwlock_wrlock(&dc->state_lock);
 				// E3 sincronização: impede outros outputs de aparecerem no meio da listagem.
@@ -143,23 +120,20 @@ static int process_commands(DataCenter *dc, int fd) {
 				// Mostra o estado atual do DataCenter e guarda o resultado da operação.
 				int result = datacenter_list(dc);
 				pthread_mutex_unlock(&dc->output_mutex); // E3
-				// A listagem terminou. As outras threads podem voltar a alterar o estado.
+				// Listagem terminou. As outras threads podem voltar a alterar o estado.
 				pthread_rwlock_unlock(&dc->state_lock);
-				// Verifica se ocorreu algum erro ao listar o estado do DataCenter.
-				if (result != 0) {
+				if (result != 0) { // Verifica se ocorreu algum erro ao listar o estado do DataCenter.
 					pthread_mutex_lock(&dc->output_mutex); // E3
 					fprintf(stderr, "Failed to list VMs.\n");
 					pthread_mutex_unlock(&dc->output_mutex);
-					// Passa para o próximo comando do ficheiro .conf
 					continue;
 				}
-				// Termina o tratamento do caso CMD_LIST dentro do switch.
 				break;
 			}
 
 			case CMD_WAIT: {
 				unsigned int delay;
-				// E1(ALTERADO): lê o tempo do ficheiro .conf atual
+				// Exercício 1(alterações): lê o tempo do ficheiro .conf atual
 				if(parse_wait(fd, &delay) != 0){
 					pthread_mutex_lock(&dc->output_mutex); // E3
 					fprintf(stderr, "Invalid wait command. See H (help) for usage.\n");		
@@ -195,10 +169,8 @@ static int process_commands(DataCenter *dc, int fd) {
 
 			case EOC:
 				/*
-				 * E1(ALTERADO):
-				 * EOC significa apenas que chegámos ao fim deste .conf.
-				 * NÃO destruímos o DataCenter, porque ainda pode haver
-				 * outros ficheiros .conf para processar.
+				 * Exercício 1(alteração): EOC significa apenas que chegámos ao fim deste .conf.
+				 * NÃO destruímos o DataCenter, porque ainda pode haver outros ficheiros .conf para processar.
 				 */
 				return 0;
 		}
@@ -216,12 +188,9 @@ typedef struct {
     int error; //indica se algum worker encontrou erro
 } WorkerArgs;
 
-/*
- * Exercício 3:
- * Cada worker vai buscar um ficheiro .conf ainda não processado e executa os seus comandos.
- */
+// Exercício 3: Cada worker vai buscar um ficheiro .conf ainda não processado e executa os seus comandos.
 static void *worker_thread(void *arg) {
-    WorkerArgs *args = (WorkerArgs *)arg;
+    WorkerArgs *args = (WorkerArgs *)arg; // Converte o argumento genérico recebido pela thread para um ponteiro para WorkerArgs.
     while (1) {
         // Protege next_file para garantir que dois workers não escolhem o mesmo ficheiro.
         pthread_mutex_lock(&args->work_mutex);
@@ -234,21 +203,14 @@ static void *worker_thread(void *arg) {
         int i = args->next_file;
         args->next_file++;
         pthread_mutex_unlock(&args->work_mutex);
-        // Constrói o caminho completo para o ficheiro .conf.
         char conf_path[MAX_PATH_SIZE];
-        int written = snprintf(
-            conf_path,
-            sizeof(conf_path),
-            "%s/%s",
-            args->input_dir,
-            args->conf_files[i]->d_name
-        );
-        if (written < 0 ||
-            (size_t)written >= sizeof(conf_path)) {
-			pthread_mutex_lock(&args->dc->output_mutex); // E3
+		 // Constrói o caminho completo para o ficheiro .conf.
+        int written = snprintf(conf_path, sizeof(conf_path), "%s/%s", args->input_dir, args->conf_files[i]->d_name);
+        if (written < 0 || (size_t)written >= sizeof(conf_path)) {
+			pthread_mutex_lock(&args->dc->output_mutex);
             fprintf(stderr, "Configuration file path is too long.\n");
             pthread_mutex_unlock(&args->dc->output_mutex);
-			pthread_mutex_lock(&args->work_mutex);
+			pthread_mutex_lock(&args->work_mutex); // Protege a variável error, partilhada entre as worker threads.
             args->error = 1;
             pthread_mutex_unlock(&args->work_mutex);
             return NULL;
@@ -271,18 +233,16 @@ static void *worker_thread(void *arg) {
 }
 
 int main(int argc, char **argv){
-	// E1(ALTERADO): Agora existe mais um argumento: INPUT_DIR.
-	if (argc != 8) { // nova alteracao devido à nova formula2 + E3
-    fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <local_cores> <input_dir> <max_threads>\n", argv[0]); // alterado devido à nova fórmula2
+	if (argc != 8) { // nova alteracao devido à nova formula2 + alteração do exercício 3
+    fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <local_cores> <input_dir> <max_threads>\n", argv[0]);
     return 1;
-  }
-
+  	}
 	size_t servers;
 	size_t ram;
 	size_t disk;
 	double cpu;
 	size_t local_cores; // alterado devido à nova fórmula2
-	size_t max_threads;   // E3
+	size_t max_threads;   // exercício 3 (adicionado)
 
 	DataCenter dc;
 	datacenter_init(&dc);	
@@ -291,16 +251,15 @@ int main(int argc, char **argv){
 			parse_size_t_arg(argv[2], &ram) != 0 ||
 			parse_size_t_arg(argv[3], &disk) != 0 ||
 			parse_double_arg(argv[4], &cpu) != 0 ||
-			parse_size_t_arg(argv[5], &local_cores) != 0 || // alterado devido à nova fórmula2
-		    parse_size_t_arg(argv[7], &max_threads) != 0 || // E3
-  			max_threads == 0) { // E3
+			parse_size_t_arg(argv[5], &local_cores) != 0 ||
+		    parse_size_t_arg(argv[7], &max_threads) != 0 ||
+  			max_threads == 0) { // nao faz sentido executar com max_threads=0 pois isso significaria não criar nenhuma worker thread para processar os .conf
 		fprintf(stderr, "Invalid command line arguments.\n");
 		return 1;
 	}
-
-	// E1(ADICIONADO): argv[6] contém a diretoria onde estão os ficheiros .conf.
+	// Exercício1(adicionado): argv[6] contém a diretoria onde estão os ficheiros .conf.
 	char *input_dir = argv[6]; // alterado devido à nova fórmula2
-	// E1: verifica se INPUT_DIR existe e corresponde a uma diretoria.
+	// Exercício 1: verifica se input_dir existe e corresponde a uma diretoria.
 	if (!path_exists(input_dir)) {
 		fprintf(stderr, "Invalid input directory.\n");
 		// O DataCenter já foi inicializado, portanto libertamos os seus recursos antes de sair.
@@ -317,37 +276,31 @@ int main(int argc, char **argv){
 		fprintf(stderr, "Failed to configure Data Center.\n");
 		return 1;
 	}
-	dc.local_cores = local_cores; // alterado devido à nova fórmula2
+	dc.local_cores = local_cores;
 	// E1(ADICIONADO): conf_files vai guardar as entradas correspondentes aos ficheiros .conf devolvidas por scandir().
 	struct dirent **conf_files = NULL;
 	int conf_count = 0;
 
-	// E1(ADICIONADO): Obtém todos os .conf existentes em INPUT_DIR. A função também os coloca por ordem alfabética.
+	// Exercício1(adicionado): Obtém todos os .conf existentes em INPUT_DIR. A função também os coloca por ordem alfabética.
     if (list_conf_files(input_dir, &conf_files, &conf_count) != 0) {
         datacenter_destroy(&dc);
         return 1;
     }
-	// E2(Adicionado): Variável onde fica guardado o identificador da nova thread.
-	pthread_t wait_thread;
-	/* Cria a thread responsável por esperar pelos processos das VMs. */
+	pthread_t wait_thread; // Variável onde fica guardado o identificador da nova thread.
+	// Cria a thread responsável por esperar pelos processos das VMs.
 	if (pthread_create(&wait_thread,NULL,vm_wait_thread,&dc) != 0) {
-		/* &wait_thread: Guarda aqui o identificador da thread criada. */	
+		/* &wait_thread: Guarda aqui o identificador da thread criada. */
 		/* NULL: Usa os atributos padrão da thread. */
 		/* vm_wait_thread: Função que a nova thread vai começar a executar. */
 		/* &dc: Argumento passado para vm_wait_thread(): o endereço do DataCenter. */
-		/* Se pthread_create() falhar, mostra uma mensagem de erro. */
 		fprintf(stderr, "Failed to create wait thread.\n");
 		// Liberta cada entrada criada pelo scandir() e depois o vetor de ponteiros.
 		free_file_list(conf_files, conf_count);
-		/* Liberta os recursos associados ao DataCenter. */
-		datacenter_destroy(&dc);
-		return 1; /* Termina o programa com erro. */
+		datacenter_destroy(&dc); // Liberta os recursos associados ao DataCenter
+		return 1; // Termina o programa com erro.
 	}
-	// E1(ADICIONADO): Processamos cada ficheiro .conf, pela ordem devolvida por list_conf_files(). 
-	// Foi apagado o for a que se referia o comentario anterior
-	// Exercício 3: Estado partilhado pelas worker threads.
-	WorkerArgs worker_args;
-	worker_args.dc = &dc;
+	WorkerArgs worker_args; // Cria a estrutura que vai guardar os dados partilhados pelas worker threads.
+	worker_args.dc = &dc; // Guarda o endereço do DataCenter comum a todas as workers.
 	worker_args.conf_files = conf_files;
 	worker_args.conf_count = conf_count;
 	worker_args.input_dir = input_dir;
@@ -356,10 +309,9 @@ int main(int argc, char **argv){
 	pthread_mutex_init(&worker_args.work_mutex, NULL);
 	// Calcula quantas worker threads serão realmente necessárias.
 	size_t num_workers = max_threads;
-	if ((size_t)conf_count < num_workers)
+	if ((size_t)conf_count < num_workers) // se houver menos ficheiros .conf do que threads permitidas,reduzimos o número de workers.
 		num_workers = (size_t)conf_count;
-	// AQUI entra o vetor de worker threads.
-	pthread_t *workers = NULL;
+	pthread_t *workers = NULL; // ponteiro para vários pthread_t, ou seja, para guardar os identificadores de várias worker threads.
 	if (num_workers > 0) {
 		workers = malloc(num_workers * sizeof(pthread_t));
 		if (workers == NULL) {
@@ -375,7 +327,6 @@ int main(int argc, char **argv){
 			return 1;
 		}
 	}
-	// Depois disto crias efetivamente as workers.
 	size_t workers_created = 0;
 	for (size_t i = 0; i < num_workers; i++) {
 		if (pthread_create(&workers[i], NULL, worker_thread, &worker_args) != 0) {
@@ -397,16 +348,14 @@ int main(int argc, char **argv){
 	pthread_mutex_destroy(&worker_args.work_mutex);
 	free(workers);
 	free_file_list(conf_files, conf_count);
-	// Já não serão criadas novas VMs.
-	pthread_mutex_lock(&dc.mutex);
+	pthread_mutex_lock(&dc.mutex); // Já não serão criadas novas VMs.
 	dc.shutting_down = 1;
 	pthread_cond_signal(&dc.child_cond);
 	pthread_mutex_unlock(&dc.mutex);
-	// Espera que a thread do Exercício 2 termine.
-	pthread_join(wait_thread, NULL);
+	pthread_join(wait_thread, NULL); // Espera que a wait_thread
+	// Guarda se ocorreu algum erro nas worker threads para verificar após a limpeza final.
 	int worker_error = worker_args.error;
 	datacenter_destroy(&dc);
-	if (worker_error)
-		return 1;
+	if (worker_error) return 1;
 	return 0;
 }
