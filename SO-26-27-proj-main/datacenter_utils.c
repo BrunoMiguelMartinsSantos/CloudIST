@@ -18,7 +18,7 @@ VMType *VMType_exists(DataCenter *dc, const char* type_id){
 	return NULL;
 }
 
-// Alterada Exercicio 3 (sincronizacao)
+// Alterada Exercicio 3
 int reservation_validate(DataCenter *dc, Reservation *reservation) {
     Resources available[dc->num_servers];
     size_t hosted_count[dc->num_servers];
@@ -290,7 +290,6 @@ int spawn_all_vms(DataCenter *dc, Reservation *res) {
         vm->pid = pid;
         vm->state = VM_STATE_RUNNING;
         // Incrementa o número de processos filhos ativos no datacenter.
-        // O mutex já está bloqueado pela thread principal, evitando acessos concorrentes.
         dc->active_children++;
         // Sinaliza a variável de condição para acordar a thread que espera por processos filhos.
         pthread_cond_signal(&dc->child_cond);
@@ -368,7 +367,8 @@ void *vm_wait_thread(void *arg) {
 		// Liberta o mutex para não bloquear outras threads enquanto espera pela terminação de um processo filho.
         pthread_mutex_unlock(&dc->mutex);
         // Espera de forma bloqueante pela terminação de um processo filho.
-        // Retorna o PID do filho terminado ou -1 em caso de erro. Apenas esta thread fica bloqueada, não a thread principal.
+        // Retorna o PID do filho terminado ou -1 em caso de erro. 
+		// Apenas a wait_thread fica bloqueada em wait(), as worker threads continuam a processar comandos.
         pid_t pid = wait(NULL);
 		// Verifica se a chamada wait() falhou.
         if (pid < 0) {

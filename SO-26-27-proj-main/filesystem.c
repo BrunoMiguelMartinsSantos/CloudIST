@@ -74,7 +74,6 @@ static int is_conf(const struct dirent *entry) {
 
 // Exercício 1: Percorre uma diretoria, guarda apenas os ficheiros .conf e ordena os seus nomes alfabeticamente.
 int list_conf_files(const char *dir_path, struct dirent ***files, int *count) {
-    // Percorre a diretoria, guarda apenas os ficheiros .conf e ordena-os alfabeticamente.
     int n = scandir(dir_path, files, is_conf, alphasort);
     if (n < 0) {
         perror("scandir");
@@ -168,16 +167,16 @@ static int copy_directory_contents(const char *src, const char *dst) {
     return 0;
 }
 
-// Exercício 1: Cria a diretoria correspondente à VM: /tmp/CloudIST/<ID_RESERVA>/<ID_VM> e copia para lá todo o conteúdo de input_dir.
+// Exercício 1: Cria a diretoria correspondente à VM: /tmp/CloudIST-13/<ID_RESERVA>/<ID_VM> e copia para lá todo o conteúdo de DIR_INPUTS.
 int prepare_vm_filesystem(const char *reservation_id, const char *vm_id, const char *input_dir) {
     char reservation_dir[MAX_PATH_SIZE];
     char vm_dir[MAX_PATH_SIZE];
     // Cria a diretoria base.
-    if (create_directory("/tmp/CloudIST-13") != 0) return 1; // acrescentei -13
+    if (create_directory("/tmp/CloudIST-13") != 0) return 1;
     // Exemplo: /tmp/CloudIST-13/R1
-    snprintf(reservation_dir, sizeof(reservation_dir), "/tmp/CloudIST-13/%s", reservation_id); // acrescentei -13
+    snprintf(reservation_dir, sizeof(reservation_dir), "/tmp/CloudIST-13/%s", reservation_id);
     if (create_directory(reservation_dir) != 0) return 1;
-    // Constrói o caminho /tmp/CloudIST/<ID_RESERVA>/<ID_VM> e guarda em written o número de caracteres necessários para o caminho.
+    // Constrói o caminho /tmp/CloudIST-13/<ID_RESERVA>/<ID_VM> e guarda em written o número de caracteres necessários para o caminho.
     int written = snprintf(vm_dir, sizeof(vm_dir), "%s/%s", reservation_dir, vm_id);
     if (written < 0 || (size_t)written >= sizeof(vm_dir)) return 1;
     if (create_directory(vm_dir) != 0) return 1;

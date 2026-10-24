@@ -344,11 +344,13 @@ int main(int argc, char **argv){
 	pthread_mutex_destroy(&worker_args.work_mutex);
 	free(workers);
 	free_file_list(conf_files, conf_count);
-	pthread_mutex_lock(&dc.mutex); // Já não serão criadas novas VMs.
+	pthread_mutex_lock(&dc.mutex);
+	// Indica que todos os .conf já foram processados e que não serão criados novos processos de VMs.
 	dc.shutting_down = 1;
+	// Acorda a wait_thread para ela verificar se já pode terminar.
 	pthread_cond_signal(&dc.child_cond);
 	pthread_mutex_unlock(&dc.mutex);
-	pthread_join(wait_thread, NULL); // Espera que a wait_thread
+	pthread_join(wait_thread, NULL); // Espera que a wait_thread termine
 	// Guarda se ocorreu algum erro nas worker threads para verificar após a limpeza final.
 	int worker_error = worker_args.error;
 	datacenter_destroy(&dc);

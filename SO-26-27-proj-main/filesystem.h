@@ -46,8 +46,8 @@ int list_conf_files(const char *dir_path, struct dirent ***files, int *count);
 void free_file_list(struct dirent **files, int count);
 
 /*
- * ADICIONADO1:
- * Cria a diretoria correspondente a uma VM em /tmp/CloudIST e copia para lá os ficheiros da diretoria de input.
+ * Exercício 1: Cria a diretoria correspondente à VM em 
+ * /tmp/CloudIST-13/<ID_RESERVA>/<ID_VM> e copia para lá os ficheiros da diretoria de inputs.
  */
 int prepare_vm_filesystem(const char *reservation_id, const char *vm_id, const char *input_dir);
 

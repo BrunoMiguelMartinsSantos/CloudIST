@@ -3,7 +3,7 @@
 
 #include <stdio.h>
 #include <sys/types.h>
-#include <pthread.h> // adicionado E2
+#include <pthread.h>
 
 #include "resources.h"
 #include "constants.h"
@@ -87,10 +87,11 @@ typedef struct DataCenter {
     size_t active_children;
     // Indica que todos os ficheiros .conf já foram processados e que não serão criadas novos processos de VMs.
     int shutting_down;
-    // Operações que alteram o DataCenter usam read lock. 
-    // O comando L usa write lock, garantindo uma fotografia consistente.
+    // As operações que alteram o DataCenter usam read/shared lock,
+    // permitindo alterações concorrentes.
+    // O comando L usa write/exclusive lock para obter uma listagem consistente.
     pthread_rwlock_t state_lock;
-    // Evita que o output de várias worker threads fique entrelaçado.
+    // Evita que o output produzido por diferentes threads fique entrelaçado.
     pthread_mutex_t output_mutex;
 } DataCenter;
 
