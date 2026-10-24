@@ -103,9 +103,9 @@ static int process_commands(DataCenter *dc, int fd) {
 					pthread_mutex_unlock(&dc->output_mutex);
 					continue;
 				}
-				pthread_mutex_lock(&dc->output_mutex); // E3
+				pthread_mutex_lock(&dc->output_mutex);
 				printf("Finished reservation execution!\n");
-				pthread_mutex_unlock(&dc->output_mutex); // E3
+				pthread_mutex_unlock(&dc->output_mutex);
 				break;
 			}
 
