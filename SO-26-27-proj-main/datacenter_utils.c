@@ -265,7 +265,7 @@ void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size
 	if (cpu_limit_value < 1) cpu_limit_value = 1;
 	if (cpu_limit_value > max_cpu_limit) cpu_limit_value = max_cpu_limit;
     char cpu_limit[MAX_STRING_SIZE]; // Cria um array de caracteres para guardar a percentagem de CPU como texto.
-    snprintf(cpu_limit, sizeof(cpu_limit), "%zu", cpu_limit_value);
+    snprintf(cpu_limit, sizeof(cpu_limit), "%ld", cpu_limit_value);
 	// Substitui o processo atual pelo cpulimit (procurado no PATH)
 	// Se execlp tiver sucesso, não retorna. se falhar, retorna -1.
 	execlp("cpulimit", "cpulimit", "-q", "-f", "-l", cpu_limit, "--", vm->type->exec_path, (char *)NULL);

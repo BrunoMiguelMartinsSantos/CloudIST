@@ -1,14 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <dirent.h> //E1(adicionado)
-#include <fcntl.h> // E1(ADICIONADO): necessário para open() e O_RDONLY
-#include <pthread.h> ///E2
-#include "datacenter_utils.h" // E2
+#include <dirent.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include "datacenter_utils.h"
 #include "parser.h"
 #include "datacenter.h"
 #include "constants.h"
-#include "filesystem.h" // E1(ADICIONADO): funções para obter os ficheiros .conf
+#include "filesystem.h"
 
 // Exercicio 1(alterações): Antes os comandos eram lidos de STDIN_FILENO. Agora recebemos 'fd', que é o descritor do ficheiro .conf atual.
 static int process_commands(DataCenter *dc, int fd) {
