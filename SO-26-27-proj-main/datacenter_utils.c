@@ -8,6 +8,7 @@
 #include <sys/resource.h>
 #include <pthread.h>
 #include <errno.h>
+#include <math.h>
 
 VMType *VMType_exists(DataCenter *dc, const char* type_id){
 	for(size_t i = 0; i < dc->num_vm_types; i++){
@@ -259,8 +260,10 @@ void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size
 	* CPULIMIT = 100 * vCPUs_da_VM * cores_locais_selecionados / (CPUs_por_maquina * numero_de_maquinas)
 	*/
 	double cpu_percentage = 100.0 * vm->type->required.cpu * (double)local_cores / (vm->server->total.cpu * (double)num_servers);
-    // Converte a percentagem de CPU para um inteiro do tipo size_t
-	size_t cpu_limit_value = (size_t)cpu_percentage;
+    long cpu_limit_value = lround(cpu_percentage);
+	long max_cpu_limit = 100 * (long)local_cores;
+	if (cpu_limit_value < 1) cpu_limit_value = 1;
+	if (cpu_limit_value > max_cpu_limit) cpu_limit_value = max_cpu_limit;
     char cpu_limit[MAX_STRING_SIZE]; // Cria um array de caracteres para guardar a percentagem de CPU como texto.
     snprintf(cpu_limit, sizeof(cpu_limit), "%zu", cpu_limit_value);
 	// Substitui o processo atual pelo cpulimit (procurado no PATH)

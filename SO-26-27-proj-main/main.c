@@ -253,6 +253,7 @@ int main(int argc, char **argv){
 			parse_double_arg(argv[4], &cpu) != 0 ||
 			parse_size_t_arg(argv[5], &local_cores) != 0 ||
 		    parse_size_t_arg(argv[7], &max_threads) != 0 ||
+			local_cores == 0 ||
   			max_threads == 0) { // nao faz sentido executar com max_threads=0 pois isso significaria não criar nenhuma worker thread para processar os .conf
 		fprintf(stderr, "Invalid command line arguments.\n");
 		return 1;
