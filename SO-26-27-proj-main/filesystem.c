@@ -60,10 +60,8 @@ static int has_conf_extension(const char *name) {
 
 // Liberta os nomes dos ficheiros e depois o próprio vetor que os contém.
 void free_file_list(struct dirent **files, int count) {
-    // Liberta cada entrada criada pelo scandir().
     for (int i = 0; i < count; i++)
         free(files[i]);
-    // Liberta o vetor de entradas.
     free(files);
 }
 

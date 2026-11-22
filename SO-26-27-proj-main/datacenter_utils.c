@@ -110,9 +110,9 @@ int reservation_commit(DataCenter *dc, Reservation *reservation){
 		for (size_t j = 0; j < item->amount; j++) {
 			VM *new_vm = calloc(1, sizeof(VM));
 			if (new_vm == NULL) {
-				pthread_mutex_lock(&dc->output_mutex); // E3
+				pthread_mutex_lock(&dc->output_mutex);
 				fprintf(stderr, "Failed to allocate VM.\n");
-				pthread_mutex_unlock(&dc->output_mutex); // E3
+				pthread_mutex_unlock(&dc->output_mutex);
 				reservation_rollback(reservation, initial_vms);
 				return 1;
 			}
@@ -230,7 +230,7 @@ void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size
 	// Obtém a RAM necessária em GB, converte-a para rlim_t e multiplica por 2^30 para obter bytes.
 	lim.rlim_cur = (rlim_t)vm->type->required.ram << 30;
 	lim.rlim_max = lim.rlim_cur;
-	// Tenta limitar a memória virtual do processo. se falhar, entra no if.
+	// Tenta limitar a memória virtual do processo
 	if (setrlimit(RLIMIT_AS, &lim) != 0) {
 		perror("setrlimit");
         _exit(1);

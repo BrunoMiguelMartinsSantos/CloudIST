@@ -180,7 +180,7 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
   for (size_t i = 0; i < reservation->items_count; i++) {
       ReservationItem *item = &reservation->items[i];
       if (item->server_id == 0 || item->server_id > dc->num_servers) {
-          pthread_mutex_lock(&dc->output_mutex); // E3
+          pthread_mutex_lock(&dc->output_mutex);
           fprintf(stderr, "Invalid server in reservation.\n");
           pthread_mutex_unlock(&dc->output_mutex);
           pthread_mutex_unlock(&dc->mutex);
