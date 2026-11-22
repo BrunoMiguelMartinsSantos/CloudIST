@@ -90,10 +90,10 @@ void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size
  * @return 0 on success.
  * @return 1 if any fork() call fails.
  */
-// Exercicio 2 (Alteração): Cria um processo filho por cada VM na reserva
+// Cria um processo filho por cada VM na reserva
 int spawn_all_vms(DataCenter *dc, Reservation *res);
 
-// Exercicio 2 (Alteração): A espera passa a ser feita exclusivamente pela nova thread
+// A espera passa a ser feita exclusivamente pela nova thread
 void *vm_wait_thread(void *arg);
 
 /**

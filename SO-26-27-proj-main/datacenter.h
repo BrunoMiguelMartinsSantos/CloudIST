@@ -39,7 +39,6 @@ typedef struct Server {
 
 	VM *hosted_vms[MAX_HOSTED_VMS];
     size_t num_hosted_vms;
-    // Protege os recursos e a lista de VMs deste servidor. Servidores diferentes podem ser alterados em paralelo.
     pthread_mutex_t mutex;
 } Server;
 
@@ -79,19 +78,11 @@ typedef struct DataCenter {
     size_t num_reservations;
 
 	int configured;		      // Wheter the datacenter is configured or not.
-    // Protege informação global partilhada do DataCenter, como reservas, tipos de VM e controlo dos processos filhos.
     pthread_mutex_t mutex;
-    // Permite pôr a thread de espera a dormir enquanto ainda não existem processos de VMs para esperar.
     pthread_cond_t child_cond;
-    // Número de processos de VMs que ainda estão ativos.
     size_t active_children;
-    // Indica que todos os ficheiros .conf já foram processados e que não serão criadas novos processos de VMs.
     int shutting_down;
-    // As operações que alteram o DataCenter usam read/shared lock,
-    // permitindo alterações concorrentes.
-    // O comando L usa write/exclusive lock para obter uma listagem consistente.
     pthread_rwlock_t state_lock;
-    // Evita que o output produzido por diferentes threads fique entrelaçado.
     pthread_mutex_t output_mutex;
 } DataCenter;
 

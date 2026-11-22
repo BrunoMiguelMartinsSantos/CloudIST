@@ -1,7 +1,7 @@
 #ifndef FILESYSTEM__H
 #define FILESYSTEM__H
 
-#include <dirent.h> // adicionado E1
+#include <dirent.h>
 #include <stddef.h>
 
 /**
@@ -36,17 +36,14 @@ int file_exists(const char *path);
  */
 int absolute_path(const char *path, char *buffer, size_t size);
 
-/*
- * ADICIONADO1:
- * Procura os ficheiros .conf existentes numa diretoria e guarda os seus nomes por ordem alfabética.
- */
+// Procura os ficheiros .conf existentes numa diretoria e guarda os seus nomes por ordem alfabética.
 int list_conf_files(const char *dir_path, struct dirent ***files, int *count);
 
-// ADICIONADO1: Liberta a memória usada pela lista de ficheiros .conf.
+// Liberta a memória usada pela lista de ficheiros .conf.
 void free_file_list(struct dirent **files, int count);
 
 /*
- * Exercício 1: Cria a diretoria correspondente à VM em 
+ * Cria a diretoria correspondente à VM em 
  * /tmp/CloudIST-13/<ID_RESERVA>/<ID_VM> e copia para lá os ficheiros da diretoria de inputs.
  */
 int prepare_vm_filesystem(const char *reservation_id, const char *vm_id, const char *input_dir);

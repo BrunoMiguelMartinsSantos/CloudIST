@@ -19,16 +19,14 @@ VMType *VMType_exists(DataCenter *dc, const char* type_id){
 	return NULL;
 }
 
-// Alterada Exercicio 3
+
 int reservation_validate(DataCenter *dc, Reservation *reservation) {
     Resources available[dc->num_servers];
     size_t hosted_count[dc->num_servers];
 	// Indica quais os servidores cujos dados temporários já foram inicializados.
     int initialized[dc->num_servers];
-	// Inicializa todas as posições do array a 0 (não inicializados).
     memset(initialized, 0, sizeof(initialized));
     size_t vms_count = 0;
-	// Percorre os itens da reserva e verifica se cada um solicita pelo menos uma VM.
     for (size_t i = 0; i < reservation->items_count; i++) {
         ReservationItem *item = &reservation->items[i];
         if (item->amount == 0) {
@@ -37,12 +35,8 @@ int reservation_validate(DataCenter *dc, Reservation *reservation) {
 			pthread_mutex_unlock(&dc->output_mutex);
             return 1;
         }
-        // Obtém o tipo de VM associado ao item da reserva.
         VMType *vm_type = item->vm_type;
-		// Converte o ID do servidor para o índice do array (começa em 0).
         size_t server_index = item->server_id - 1;
-        // Copia os recursos do servidor apenas na primeira utilização,
-		// em vez de copiar inicialmente o estado de todos os servidores.
         if (!initialized[server_index]) {
             available[server_index] = dc->servers[server_index].available;
             hosted_count[server_index] = dc->servers[server_index].num_hosted_vms;
@@ -158,14 +152,14 @@ Reservation *find_pending_reservation(DataCenter *dc, const char *reservation_id
 	}
 
 	if (!res) {
-		pthread_mutex_lock(&dc->output_mutex); // E3
+		pthread_mutex_lock(&dc->output_mutex);
 		fprintf(stderr, "Reservation ID %s not found.\n", reservation_id);
 		pthread_mutex_unlock(&dc->output_mutex);
 		return NULL;
 	}
 
 	if (res->state != RES_STATE_PENDING) {
-		pthread_mutex_lock(&dc->output_mutex); // E3
+		pthread_mutex_lock(&dc->output_mutex);
 		fprintf(stderr, "Reservation ID %s is not in a pending state.\n", reservation_id);
 		pthread_mutex_unlock(&dc->output_mutex);
 		return NULL;
@@ -180,7 +174,6 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 	for (size_t i = 0; i < reservation->num_vms; i++) {
 		VM *vm = reservation->vms[i];
 		Server *server = vm->server;
-		// E3 sincronização: impede uma reserva de alterar este servidor enquanto estamos a devolver recursos.
 		pthread_mutex_lock(&server->mutex);
 		// Return the VM resources back to the hosting server.
 		resources_add(&server->available, vm->type->required);
@@ -197,9 +190,7 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 				break;
 			}
 		}
-        // Já terminámos de alterar este servidor.
         pthread_mutex_unlock(&server->mutex);
-		// Liberta a estrutura da VM.
 		free(vm);
 		reservation->vms[i] = NULL;
 	}
@@ -226,7 +217,6 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 
 // Recebe a VM, o ID da reserva, o número de servidores e o número de cores locais atribuídos ao CloudIST.
 void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size_t local_cores) {
-	// Define o caminho da diretoria onde a aplicação da VM será executada.
 	char vm_dir[MAX_PATH_SIZE];
 	int written = snprintf(vm_dir, sizeof(vm_dir), "/tmp/CloudIST-13/%s/%s", reservation_id, vm->id);
 	if (written < 0 || (size_t)written >= sizeof(vm_dir)) {
@@ -236,7 +226,6 @@ void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size
 		perror("chdir");
 		_exit(1);
 	}
-	// Cria uma estrutura para definir os limites de utilização de recursos do processo.
 	struct rlimit lim;
 	// Obtém a RAM necessária em GB, converte-a para rlim_t e multiplica por 2^30 para obter bytes.
 	lim.rlim_cur = (rlim_t)vm->type->required.ram << 30;
@@ -246,40 +235,30 @@ void spawn_vm_child(VM *vm, const char *reservation_id, size_t num_servers, size
 		perror("setrlimit");
         _exit(1);
     }
-    // Obtém o espaço de disco em GB e converte-o para bytes usando 2^30.
     lim.rlim_cur = (rlim_t)vm->type->required.disk << 30;
-	// Define o limite máximo de tamanho de ficheiro igual ao limite atual.
     lim.rlim_max = lim.rlim_cur;
 	// Tenta limitar o tamanho máximo dos ficheiros escritos pelo processo.
     if (setrlimit(RLIMIT_FSIZE, &lim) != 0) {
         perror("setrlimit");
         _exit(1);
     }
-	/*
-	* Fórmula atualizada do enunciado:
-	* CPULIMIT = 100 * vCPUs_da_VM * cores_locais_selecionados / (CPUs_por_maquina * numero_de_maquinas)
-	*/
 	double cpu_percentage = 100.0 * vm->type->required.cpu * (double)local_cores / (vm->server->total.cpu * (double)num_servers);
     long cpu_limit_value = lround(cpu_percentage);
 	long max_cpu_limit = 100 * (long)local_cores;
 	if (cpu_limit_value < 1) cpu_limit_value = 1;
 	if (cpu_limit_value > max_cpu_limit) cpu_limit_value = max_cpu_limit;
-    char cpu_limit[MAX_STRING_SIZE]; // Cria um array de caracteres para guardar a percentagem de CPU como texto.
+    char cpu_limit[MAX_STRING_SIZE];
     snprintf(cpu_limit, sizeof(cpu_limit), "%ld", cpu_limit_value);
-	// Substitui o processo atual pelo cpulimit (procurado no PATH)
-	// Se execlp tiver sucesso, não retorna. se falhar, retorna -1.
 	execlp("cpulimit", "cpulimit", "-q", "-f", "-l", cpu_limit, "--", vm->type->exec_path, (char *)NULL);
-    perror("execlp"); // Só chega aqui se o exec falhar.
+    perror("execlp");
     _exit(1);
 }
 
 // Cria os processos filhos para todas as VMs da reserva. dc: ponteiro para o datacenter; res: ponteiro para a reserva.
 // Retorna 0 se todos os forks tiverem sucesso e 1 se algum falhar.
 int spawn_all_vms(DataCenter *dc, Reservation *res) {
-	// Percorre todas as VMs da reserva.
 	for (size_t i = 0; i < res->num_vms; i++) {
-		VM *vm = res->vms[i]; // Obtém o ponteiro para a VM na posição i.
-		// Cria um processo filho; retorna -1 se falhar, 0 no filho e o PID do filho no pai.
+		VM *vm = res->vms[i];
 		pid_t pid = fork();
         if (pid < 0) {
             pthread_mutex_lock(&dc->output_mutex);
@@ -287,14 +266,10 @@ int spawn_all_vms(DataCenter *dc, Reservation *res) {
 			pthread_mutex_unlock(&dc->output_mutex);
             return 1;
         }
-		// No processo filho, configura os limites de recursos e executa a VM através do cpulimit.
         if (pid == 0) spawn_vm_child(vm, res->id, dc->num_servers, dc->local_cores);
-        // Processo pai: guarda o PID do filho e marca a VM como em execução.
         vm->pid = pid;
         vm->state = VM_STATE_RUNNING;
-        // Incrementa o número de processos filhos ativos no datacenter.
         dc->active_children++;
-        // Sinaliza a variável de condição para acordar a thread que espera por processos filhos.
         pthread_cond_signal(&dc->child_cond);
 	}
 	return 0;
@@ -302,43 +277,31 @@ int spawn_all_vms(DataCenter *dc, Reservation *res) {
 
 // Procura uma VM pelo PID do processo terminado e remove-a, libertando a memória e devolvendo os recursos ao servidor.
 static void destroy_finished_vm(DataCenter *dc, pid_t pid) {
-	// Percorre todas as reservas existentes no datacenter.
     for (size_t i = 0; i < dc->num_reservations; i++) {
-        Reservation *res = &dc->reservations[i]; // Obtém o endereço da reserva na posição i.
-		// Percorre todas as VMs pertencentes à reserva.
+        Reservation *res = &dc->reservations[i];
         for (size_t j = 0; j < res->num_vms; j++) {
-            VM *vm = res->vms[j]; // Obtém o ponteiro para a VM na posição j.
-			// Se o PID da VM for diferente do procurado passa diretamente para a próxima VM.
+            VM *vm = res->vms[j];
             if (vm->pid != pid)
                 continue;
-            // Se a reserva tiver apenas uma VM, destrói a reserva inteira e termina a função com return.
             if (res->num_vms == 1) {
                 reservation_destroy(dc, res);
                 return;
             }
-            Server *server = vm->server; // Obtém o servidor físico onde a VM estava alojada.
+            Server *server = vm->server;
 			pthread_mutex_lock(&server->mutex);
-            // Devolve ao servidor os recursos (RAM, disco e CPU) que estavam reservados para esta VM.
             resources_add(&server->available, vm->type->required);
-            // Percorre a lista de VMs alojadas no servidor.
             for (size_t k = 0; k < server->num_hosted_vms; k++) {
-				// Procura a posição da VM que terminou.		                
 				if (server->hosted_vms[k] == vm) {
 					// Desloca os ponteiros das VMs seguintes uma posição para a esquerda, eliminando a VM da lista sem deixar espaços vazios.
                     memmove(&server->hosted_vms[k],&server->hosted_vms[k + 1],(server->num_hosted_vms - k - 1)*sizeof(VM *));
-					// Decrementa o número de VMs alojadas.
                     server->num_hosted_vms--;
-					// Coloca NULL na última posição utilizada anteriormente, eliminando o ponteiro duplicado.
                     server->hosted_vms[server->num_hosted_vms] = NULL;
-					 // Termina o ciclo de procura da VM no servidor.
                     break;
                 }
             }
 			pthread_mutex_unlock(&server->mutex);
-			// Remove a VM da lista da reserva, deslocando os ponteiros seguintes uma posição para a esquerda.
             memmove(&res->vms[j], &res->vms[j + 1], (res->num_vms - j - 1) * sizeof(VM *));
-            res->num_vms--; // Decrementa o número de VMs da reserva.
-			// Coloca NULL na última posição anteriormente utilizada.
+            res->num_vms--;
             res->vms[res->num_vms] = NULL;
             free(vm);
             return;
@@ -348,13 +311,9 @@ static void destroy_finished_vm(DataCenter *dc, pid_t pid) {
 
 // Função executada por uma thread responsável por esperar pela terminação
 // dos processos filhos das VMs e libertar os respetivos recursos.
-// Recebe um ponteiro genérico (void *arg) e devolve um ponteiro genérico.
 void *vm_wait_thread(void *arg) {
-	// Converte o ponteiro genérico arg para um ponteiro DataCenter.
     DataCenter *dc = (DataCenter *)arg;
-	// Ciclo infinito para continuar a monitorizar os processos filhos.
     while (1) {
-		// Bloqueia o mutex para aceder com segurança às variáveis partilhadas active_children e shutting_down.
         pthread_mutex_lock(&dc->mutex);
         // Enquanto não existirem filhos ativos e o programa não estiver a encerrar, a thread fica à espera.
         while (dc->active_children == 0 && !dc->shutting_down) {
@@ -367,15 +326,9 @@ void *vm_wait_thread(void *arg) {
             pthread_mutex_unlock(&dc->mutex);
             return NULL;
         }
-		// Liberta o mutex para não bloquear outras threads enquanto espera pela terminação de um processo filho.
         pthread_mutex_unlock(&dc->mutex);
-        // Espera de forma bloqueante pela terminação de um processo filho.
-        // Retorna o PID do filho terminado ou -1 em caso de erro. 
-		// Apenas a wait_thread fica bloqueada em wait(), as worker threads continuam a processar comandos.
         pid_t pid = wait(NULL);
-		// Verifica se a chamada wait() falhou.
         if (pid < 0) {
-			// Se wait() foi interrompido por um sinal (EINTR), volta ao início do ciclo para tentar novamente.
             if (errno == EINTR)
                 continue;
 			pthread_mutex_lock(&dc->output_mutex);
@@ -383,16 +336,11 @@ void *vm_wait_thread(void *arg) {
 			pthread_mutex_unlock(&dc->output_mutex);
             continue;
         }
-		/*
- 		* Permite alterações concorrentes ao estado do Data Center,
- 		* impedindo que o comando L inicie a listagem durante estas operações.
- 		*/
 		pthread_rwlock_rdlock(&dc->state_lock);
 		pthread_mutex_lock(&dc->mutex);
 		destroy_finished_vm(dc, pid);
 		dc->active_children--;
 		pthread_mutex_unlock(&dc->mutex);
-		// Terminou a alteração do estado.
 		pthread_rwlock_unlock(&dc->state_lock);
     }
 }

@@ -14,10 +14,8 @@ void datacenter_init(DataCenter *dc) {
   dc->num_reservations = 0;
   dc->configured = 0;
   dc->active_children = 0;
-  dc->shutting_down = 0; // Inicializa a 0, indicando que o datacenter não está a encerrar.
-  // Inicializa o mutex para proteger o acesso aos dados partilhados. NULL indica que são usadas as configurações padrão.
+  dc->shutting_down = 0;
   pthread_mutex_init(&dc->mutex, NULL);
-  // Inicializa a variável de condição usada para acordar a thread que espera pelos processos filhos
   pthread_cond_init(&dc->child_cond, NULL);
   pthread_rwlock_init(&dc->state_lock, NULL);
   pthread_mutex_init(&dc->output_mutex, NULL);
@@ -32,11 +30,8 @@ void datacenter_destroy(DataCenter *dc) {
     pthread_mutex_destroy(&dc->servers[i].mutex);
   }
   free(dc->servers);
-  // Destrói a variável de condição usada para acordar a thread que espera pelos processos filhos das VMs.
   pthread_cond_destroy(&dc->child_cond);
-  // Destrói o mutex utilizado para proteger os dados partilhados do datacenter contra acessos simultâneos de várias threads.
   pthread_mutex_destroy(&dc->mutex);
-  // Destrói o state_lock que garantia uma listagem consistente do DataCenter no comando L.
   pthread_rwlock_destroy(&dc->state_lock);
   pthread_mutex_destroy(&dc->output_mutex);
 }
@@ -65,7 +60,6 @@ int datacenter_configure(DataCenter *dc, size_t num_servers, Resources *resource
     dc->servers[i].total = *resources;
     dc->servers[i].available = *resources;
     dc->servers[i].num_hosted_vms = 0;
-    // Exercício 3: cada servidor tem o seu próprio mutex.
     pthread_mutex_init(&dc->servers[i].mutex, NULL);
   }
 
@@ -77,7 +71,7 @@ int datacenter_configure(DataCenter *dc, size_t num_servers, Resources *resource
 
 int datacenter_define_VM(DataCenter *dc, VMType *type){
   if (!dc->configured) {
-    pthread_mutex_lock(&dc->output_mutex); // E3
+    pthread_mutex_lock(&dc->output_mutex);
     fprintf(stderr, "Data Center needs to be configured!\n");
     pthread_mutex_unlock(&dc->output_mutex);
     return 1;
@@ -96,7 +90,6 @@ int datacenter_define_VM(DataCenter *dc, VMType *type){
     pthread_mutex_unlock(&dc->output_mutex);
     return 1;
   }
-  // Guarda o caminho absoluto do executável porque a VM vai mudar para a sua própria diretoria antes do exec.
   char absolute_exec[MAX_PATH_SIZE];
   if (absolute_path(type->exec_path, absolute_exec, sizeof(absolute_exec)) != 0) {
     pthread_mutex_lock(&dc->output_mutex);
@@ -105,8 +98,7 @@ int datacenter_define_VM(DataCenter *dc, VMType *type){
     return 1;
   }
 
-  strcpy(type->exec_path, absolute_exec); // substitui o caminho original pelo caminho absoluto.
-  // Verifica se o DIR_INPUTS da VM existe.
+  strcpy(type->exec_path, absolute_exec);
   if (!path_exists(type->input_folder)) {
     pthread_mutex_lock(&dc->output_mutex);
     fprintf(stderr, "Invalid input folder.\n");
@@ -124,17 +116,15 @@ int datacenter_define_VM(DataCenter *dc, VMType *type){
   return 0;
 }
 
-// Exercício 3: Verifica se uma reserva utiliza determinado servidor.
+// Verifica se uma reserva utiliza determinado servidor.
 static int reservation_uses_server(Reservation *reservation, size_t server_id) {
-  // Percorre todos os itens da reserva à procura do servidor indicado.
     for (size_t i = 0; i < reservation->items_count; i++) {
-        // Se algum item da reserva usa este servidor, devolve 1
         if (reservation->items[i].server_id == server_id) return 1;
     }
     return 0;
 }
 
-// Exercício 3: Bloqueia apenas os servidores utilizados por esta reserva. São sempre bloqueados por ordem crescente para evitar deadlock.
+// Bloqueia apenas os servidores utilizados por esta reserva. São sempre bloqueados por ordem crescente para evitar deadlock.
 static void lock_reservation_servers(DataCenter *dc,Reservation *reservation) {
     for (size_t i = 0; i < dc->num_servers; i++) {
         if (reservation_uses_server(reservation,dc->servers[i].id)) {
@@ -143,7 +133,7 @@ static void lock_reservation_servers(DataCenter *dc,Reservation *reservation) {
     }
 }
 
-// Exercíci 3: Liberta os servidores bloqueados pela reserva.
+// Liberta os servidores bloqueados pela reserva.
 static void unlock_reservation_servers(DataCenter *dc,Reservation *reservation) {
     // Liberta os mutexes dos servidores pela ordem inversa àquela em que foram bloqueados.
     // Bloqueámos por ordem crescente para evitar deadlocks e libertámos por ordem inversa por organização.
@@ -154,10 +144,9 @@ static void unlock_reservation_servers(DataCenter *dc,Reservation *reservation) 
     }
 }
 
-// Exercício 3: Deve ser chamada com dc->mutex bloqueado.
+// Deve ser chamada com dc->mutex bloqueado.
 static int reservation_id_exists(DataCenter *dc, const char *reservation_id) {
     for (size_t i = 0; i < dc->num_reservations; i++) {
-        // compara estas duas strings até, no máximo, ao tamanho máximo permitido para um ID.
         if (strncmp(reservation_id, dc->reservations[i].id, MAX_STRING_SIZE) == 0) {
             return 1;
         }
@@ -173,9 +162,7 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
     pthread_mutex_unlock(&dc->output_mutex);
     return 1;
   }
-  // Protege temporariamente os dados globais do DataCenter enquanto validamos a reserva
   pthread_mutex_lock(&dc->mutex);
-  // Verifica se já existe uma reserva com este ID.
   if (reservation_id_exists(dc, reservation->id)) {
       pthread_mutex_lock(&dc->output_mutex);
       fprintf(stderr, "Reservation with id %s already exists.\n", reservation->id);
@@ -183,7 +170,6 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
       pthread_mutex_unlock(&dc->mutex);
       return 1;
   }
-  // Verifica se ainda existe espaço na lista global de reservas.
   if (dc->num_reservations >= MAX_RESERVATIONS) {
         pthread_mutex_lock(&dc->output_mutex);
         fprintf(stderr, "Max number of reservations reached\n");
@@ -191,7 +177,6 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
         pthread_mutex_unlock(&dc->mutex);
         return 1;
   }
-  // Percorre os itens da reserva e valida se o servidor e o tipo de VM indicados em cada item existem no DataCenter.
   for (size_t i = 0; i < reservation->items_count; i++) {
       ReservationItem *item = &reservation->items[i];
       if (item->server_id == 0 || item->server_id > dc->num_servers) {
@@ -211,9 +196,7 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
       }
   }
   pthread_mutex_unlock(&dc->mutex);
-  // Bloqueamos apenas os servidores utilizados por esta reserva.
   lock_reservation_servers(dc, reservation);
-  // Verifica se os servidores têm recursos suficientes para satisfazer a reserva.
   if (reservation_validate(dc, reservation) != 0) {
       unlock_reservation_servers(dc, reservation);
       return 1;
@@ -223,9 +206,7 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
       unlock_reservation_servers(dc, reservation);
       return 1;
   }
-  // A alteração dos servidores terminou.
   unlock_reservation_servers(dc, reservation);
-  // Só a inserção na lista global das reservas precisa novamente do mutex global.
   pthread_mutex_lock(&dc->mutex);
   dc->reservations[dc->num_reservations] = *reservation;
   dc->num_reservations++;
@@ -245,8 +226,6 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id) {
   Reservation *res = find_pending_reservation(dc, reservation_id);
   if (!res) return 1;
 
-  // Antes de executar as VMs, cria a diretoria de cada uma em /tmp/CloudIST-13/<ID_RESERVA>/<ID_VM>
-  // e copia para lá os ficheiros da diretoria de inputs da VM.
   for (size_t i = 0; i < res->num_vms; i++) {
     VM *vm = res->vms[i];
     if (prepare_vm_filesystem(res->id, vm->id, vm->type->input_folder) != 0) {
@@ -274,11 +253,6 @@ int datacenter_list(DataCenter *dc) {
   printf("------------------------------------------------------------------------------------------\n");
 
   for (size_t i = 0; i < dc->num_servers; i++) {
-    /*
-    * Exercício 3: usamos um ponteiro para aceder diretamente ao Server original,
-    * evitando copiar a estrutura, que contém um mutex.
-    * Como server é agora um ponteiro, os campos são acedidos com -> em vez de .
-    */
     Server *server = &dc->servers[i];
 
     Resources used = server->total;
