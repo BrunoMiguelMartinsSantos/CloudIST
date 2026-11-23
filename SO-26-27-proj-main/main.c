@@ -9,6 +9,7 @@
 #include "datacenter.h"
 #include "constants.h"
 #include "filesystem.h"
+#include <sys/stat.h>
 
 static int process_commands(DataCenter *dc, int fd) {
 	while(1){
@@ -197,7 +198,7 @@ static void *worker_thread(void *arg) {
 
 int main(int argc, char **argv){
 	if (argc != 8) {
-    fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <local_cores> <input_dir> <max_threads>\n", argv[0]);
+    fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <local_cores> <max_clients> <register_fifo>\n", argv[0]);
     return 1;
   	}
 	size_t servers;
@@ -205,28 +206,24 @@ int main(int argc, char **argv){
 	size_t disk;
 	double cpu;
 	size_t local_cores;
-	size_t max_threads;
-
-	DataCenter dc;
-	datacenter_init(&dc);	
+	size_t max_clients;
 
 	if (parse_size_t_arg(argv[1], &servers) != 0 ||
 			parse_size_t_arg(argv[2], &ram) != 0 ||
 			parse_size_t_arg(argv[3], &disk) != 0 ||
 			parse_double_arg(argv[4], &cpu) != 0 ||
 			parse_size_t_arg(argv[5], &local_cores) != 0 ||
-		    parse_size_t_arg(argv[7], &max_threads) != 0 ||
+			parse_size_t_arg(argv[6], &max_clients) != 0 ||
 			local_cores == 0 ||
-  			max_threads == 0) {
+			max_clients == 0) {
 		fprintf(stderr, "Invalid command line arguments.\n");
 		return 1;
 	}
-	char *input_dir = argv[6];
-	if (!path_exists(input_dir)) {
-		fprintf(stderr, "Invalid input directory.\n");
-		datacenter_destroy(&dc);
-		return 1;
-	}
+	char *register_fifo = argv[7];
+
+	DataCenter dc;
+	datacenter_init(&dc);	
+
 	Resources resources = {
     .ram = ram,
     .disk = disk,
@@ -240,6 +237,18 @@ int main(int argc, char **argv){
 	dc.local_cores = local_cores;
 	struct dirent **conf_files = NULL;
 	int conf_count = 0;
+
+	if (mkfifo(register_fifo, S_IRUSR | S_IWUSR) == -1) {
+    	perror("mkfifo");
+    	return 1;
+	}
+
+	int register_fd = open(register_fifo, O_RDONLY);
+	if (register_fd == -1) {
+		perror("open");
+		unlink(register_fifo);
+		return 1;
+	}
 
     if (list_conf_files(input_dir, &conf_files, &conf_count) != 0) {
         datacenter_destroy(&dc);

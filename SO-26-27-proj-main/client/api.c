@@ -50,7 +50,18 @@ int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char
     (void) client_id;
 
     //TODO: create pipes and connect to the server through the server_pipe_path
-    printf("Connect: Implement me pls\n");
+   if (mkfifo(req_pipe_path, S_IRUSR | S_IWUSR) == -1) {
+        perror("mkfifo request");
+        return 1;
+    }
+
+    if (mkfifo(resp_pipe_path, S_IRUSR | S_IWUSR) == -1) {
+        perror("mkfifo response");
+        unlink(req_pipe_path);
+        return 1;
+    }
+
+    
 
     // TODO: These values should be initialized with data received from the server
     size_t num_servers = 0, ram = 0, disk = 0;
