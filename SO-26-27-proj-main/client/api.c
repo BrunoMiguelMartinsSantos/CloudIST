@@ -10,6 +10,10 @@
 #include "api.h"
 #include "parser.h"
 
+static int request_fd = -1;
+static int response_fd = -1;
+static char request_path[MAX_PIPE_PATH_LENGTH];
+static char request_path[MAX_PIPE_PATH_LENGTH];
 
 void pretty_print_cloud_specs(size_t num_servers, size_t ram, size_t disk, double cpus) {
     printf("╔══════════════════════════════════════════╗\n");
@@ -43,25 +47,19 @@ void print_vm(char * vm_id, char * vm_type_id, size_t server_id, char vm_state) 
 }
 
 int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char const* server_pipe_path, unsigned int client_id) {
-    
-    (void) req_pipe_path;
-    (void) resp_pipe_path;
-    (void) server_pipe_path;
-    (void) client_id;
+    size_t req_len = strlen(req_pipe_path);
+    size_t resp_len = strlen(resp_pipe_path);
 
-    //TODO: create pipes and connect to the server through the server_pipe_path
-   if (mkfifo(req_pipe_path, S_IRUSR | S_IWUSR) == -1) {
-        perror("mkfifo request");
+    if (req_len >= MAX_PIPE_PATH_LENGTH || resp_len >= MAX_PIPE_PATH_LENGTH) return 1;
+
+    if (mkfifo(req_pipe_path, S_IRUSR | S_IWUSR) == -1) {
         return 1;
     }
 
     if (mkfifo(resp_pipe_path, S_IRUSR | S_IWUSR) == -1) {
-        perror("mkfifo response");
         unlink(req_pipe_path);
         return 1;
     }
-
-    
 
     // TODO: These values should be initialized with data received from the server
     size_t num_servers = 0, ram = 0, disk = 0;
