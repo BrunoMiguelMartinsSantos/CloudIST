@@ -78,17 +78,15 @@ int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char
     memcpy(msg + 1 + MAX_PIPE_PATH_LENGTH, resp_pipe_path, resp_len);
     memcpy(msg + 1 + 2 * MAX_PIPE_PATH_LENGTH, &client_id, sizeof(client_id));
 
-    ssize_t written = write(reg_fd, msg, sizeof(msg));
+    int sent = write_all(reg_fd, msg, sizeof(msg));
+
     close(reg_fd);
 
-    // servidor fechar o FIFO de registo depois de o cliente o abrir, mas antes de escrever
-    // de acordo com o enunciado acho q isso n é suposto acontecer mas tbm diz 
-    // que cloudIst_connect() devolve 1 em caso de erro
-    //if (written != (ssize_t)sizeof(msg)) {
-        //unlink(req_pipe_path);
-        //unlink(resp_pipe_path);
-        //return 1;
-    //} nao sei se é necessário
+    if (sent != 1) {
+        unlink(req_pipe_path);
+        unlink(resp_pipe_path);
+        return 1;
+    }
 
     int req_fd = open(req_pipe_path, O_WRONLY);
     if (req_fd == -1) {
