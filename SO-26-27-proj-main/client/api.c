@@ -141,8 +141,23 @@ int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char
 
 int cloudIst_disconnect(void){
     //TODO close pipes
-    printf("Implement me pls\n");
-    return 0;
+    if (request_fd == -1) return 1;
+
+    char opcode = 2;
+    int sent = write_all(request_fd, &opcode, sizeof(opcode));
+
+    close(request_fd);
+    close(response_fd);
+    unlink(request_path);
+    unlink(response_path);
+
+    request_fd = -1;
+    response_fd = -1;
+
+    if (sent == 1) {
+        return 0;
+    }
+    return 1;
 }
 
 int cloudIst_define(VMType vm_type) {

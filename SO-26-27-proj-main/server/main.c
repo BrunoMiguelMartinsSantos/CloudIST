@@ -268,7 +268,6 @@ int main(int argc, char **argv){
 		return 1;
 	}
 	dc.local_cores = local_cores;
-	//int conf_count = 0;
 
 	if (mkfifo(register_fifo, S_IRUSR | S_IWUSR) == -1) {
     	perror("mkfifo");
@@ -282,83 +281,28 @@ int main(int argc, char **argv){
 		return 1;
 	}
 
-	unsigned int client_id;
-	int request_fd, response_fd;
-
-	int status = accept_client(register_fd, &dc, &client_id, &request_fd, &response_fd);
-
-	if (status == 0) {
-		close(request_fd);
-		close(response_fd);
-	}
-	/*
-    if (list_conf_files(input_dir, &conf_files, &conf_count) != 0) {
-        datacenter_destroy(&dc);
+	int register_write_fd = open(register_fifo, O_WRONLY);
+    if (register_write_fd == -1) {
+        perror("open");
+        close(register_fd);
+        unlink(register_fifo);
         return 1;
     }
-	pthread_t wait_thread;
-	if (pthread_create(&wait_thread,NULL,vm_wait_thread,&dc) != 0) {
-		fprintf(stderr, "Failed to create wait thread.\n");
-		free_file_list(conf_files, conf_count);
-		datacenter_destroy(&dc);
-		return 1;
-	}
-	WorkerArgs worker_args; // Cria a estrutura que vai guardar os dados partilhados pelas worker threads.
-	worker_args.dc = &dc;
-	worker_args.conf_files = conf_files;
-	worker_args.conf_count = conf_count;
-	worker_args.input_dir = input_dir;
-	worker_args.next_file = 0;
-	worker_args.error = 0;
-	pthread_mutex_init(&worker_args.work_mutex, NULL);
-	size_t num_workers = max_threads;
-	if ((size_t)conf_count < num_workers) num_workers = (size_t)conf_count;
-	pthread_t *workers = NULL;
-	if (num_workers > 0) {
-		workers = malloc(num_workers * sizeof(pthread_t));
-		if (workers == NULL) {
-			fprintf(stderr, "Failed to allocate worker threads.\n");
-			pthread_mutex_destroy(&worker_args.work_mutex);
-			free_file_list(conf_files, conf_count);
-			pthread_mutex_lock(&dc.mutex);
-			dc.shutting_down = 1;
-			pthread_cond_signal(&dc.child_cond);
-			pthread_mutex_unlock(&dc.mutex);
-			pthread_join(wait_thread, NULL);
-			datacenter_destroy(&dc);
-			return 1;
-		}
-	}
-	size_t workers_created = 0;
-	for (size_t i = 0; i < num_workers; i++) {
-		if (pthread_create(&workers[i], NULL, worker_thread, &worker_args) != 0) {
-			pthread_mutex_lock(&dc.output_mutex);
-			fprintf(stderr, "Failed to create worker thread.\n");
-			pthread_mutex_unlock(&dc.output_mutex);
-			pthread_mutex_lock(&worker_args.work_mutex);
-			worker_args.error = 1;
-			pthread_mutex_unlock(&worker_args.work_mutex);
-			break;
-		}
-		workers_created++;
-	}
-	for (size_t i = 0; i < workers_created; i++) {
-		pthread_join(workers[i], NULL);
-	}
-	pthread_mutex_destroy(&worker_args.work_mutex);
-	free(workers);
-	free_file_list(conf_files, conf_count);
-	pthread_mutex_lock(&dc.mutex);
-	dc.shutting_down = 1;
-	pthread_cond_signal(&dc.child_cond);
-	pthread_mutex_unlock(&dc.mutex);
-	pthread_join(wait_thread, NULL);
-	int worker_error = worker_args.error;
-	datacenter_destroy(&dc);
-	if (worker_error) return 1;
-	return 0;
-	*/
-	close(register_fd);
+
+	int status;
+
+	while (1) {
+        unsigned int client_id;
+        int request_fd, response_fd;
+        status = accept_client(register_fd, &dc, &client_id, &request_fd, &response_fd);
+        if (status != 0) break;
+        char opcode;
+        int received = read_all(request_fd, &opcode, sizeof(opcode));
+        close(request_fd);
+        close(response_fd);
+    }
+    close(register_write_fd);
+    close(register_fd);
     unlink(register_fifo);
     datacenter_destroy(&dc);
     return status;
