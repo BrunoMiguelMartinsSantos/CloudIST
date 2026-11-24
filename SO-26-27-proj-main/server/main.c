@@ -10,7 +10,9 @@
 #include "constants.h"
 #include "filesystem.h"
 #include <sys/stat.h>
+#include <string.h>
 
+/*
 static int process_commands(DataCenter *dc, int fd) {
 	while(1){
 		switch (get_next_command(fd)){
@@ -143,7 +145,7 @@ static int process_commands(DataCenter *dc, int fd) {
 				return 0;
 		}
 	}
-}
+}*/
 
 // Informação partilhada pelas worker threads.
 typedef struct {
@@ -156,6 +158,7 @@ typedef struct {
     int error;
 } WorkerArgs;
 
+/*
 // Cada worker vai buscar um ficheiro .conf ainda não processado e executa os seus comandos.
 static void *worker_thread(void *arg) {
     WorkerArgs *args = (WorkerArgs *)arg;
@@ -193,6 +196,36 @@ static void *worker_thread(void *arg) {
         process_commands(args->dc, fd);
         close(fd);
     }
+}
+*/
+
+int accept_client(int register_fd, const DataCenter *dc, unsigned int *client_id, int *request_fd, int *response_fd) {
+	char msg[1 + 2 * MAX_PIPE_PATH_LENGTH + sizeof(*client_id)];
+	if (read_all(register_fd, msg, sizeof(msg)) != 1 || msg[0] != 1) return 1;
+	char const *req_path = msg + 1;
+	char const *resp_path = msg + 1 + MAX_PIPE_PATH_LENGTH;
+	memcpy(client_id, msg + 1 + 2 * MAX_PIPE_PATH_LENGTH, sizeof(*client_id));
+	*request_fd = open(req_path, O_RDONLY);
+    if (*request_fd == -1) {
+        return 1;
+    }
+    *response_fd = open(resp_path, O_WRONLY);
+    if (*response_fd == -1) {
+        close(*request_fd);
+        return 1;
+    }
+	char result = 0;
+	const Resources *total = &dc->servers[0].total;
+	if (write_all(*response_fd, &result, sizeof(result)) != 1 ||
+        write_all(*response_fd, &dc->num_servers, sizeof(dc->num_servers)) != 1 ||
+        write_all(*response_fd, &total->ram, sizeof(total->ram)) != 1 ||
+        write_all(*response_fd, &total->disk, sizeof(total->disk)) != 1 ||
+        write_all(*response_fd, &total->cpu, sizeof(total->cpu)) != 1) {
+        close(*request_fd);
+        close(*response_fd);
+        return 1;
+    }
+	return 0;
 }
 
 
@@ -235,8 +268,7 @@ int main(int argc, char **argv){
 		return 1;
 	}
 	dc.local_cores = local_cores;
-	struct dirent **conf_files = NULL;
-	int conf_count = 0;
+	//int conf_count = 0;
 
 	if (mkfifo(register_fifo, S_IRUSR | S_IWUSR) == -1) {
     	perror("mkfifo");
@@ -250,6 +282,16 @@ int main(int argc, char **argv){
 		return 1;
 	}
 
+	unsigned int client_id;
+	int request_fd, response_fd;
+
+	int status = accept_client(register_fd, &dc, &client_id, &request_fd, &response_fd);
+
+	if (status == 0) {
+		close(request_fd);
+		close(response_fd);
+	}
+	/*
     if (list_conf_files(input_dir, &conf_files, &conf_count) != 0) {
         datacenter_destroy(&dc);
         return 1;
@@ -315,4 +357,9 @@ int main(int argc, char **argv){
 	datacenter_destroy(&dc);
 	if (worker_error) return 1;
 	return 0;
+	*/
+	close(register_fd);
+    unlink(register_fifo);
+    datacenter_destroy(&dc);
+    return status;
 }

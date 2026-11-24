@@ -48,4 +48,8 @@ void free_file_list(struct dirent **files, int count);
  */
 int prepare_vm_filesystem(const char *reservation_id, const char *vm_id, const char *input_dir);
 
+
+int read_all(int fd, void *buffer, size_t size);
+int write_all(int fd, const void *buffer, size_t size);
+
 #endif // FILESYSTEM__H

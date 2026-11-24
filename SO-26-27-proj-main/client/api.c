@@ -6,9 +6,10 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <time.h>
-
+#include <errno.h>
 #include "api.h"
 #include "parser.h"
+#include "filesystem.h"
 
 static int request_fd = -1;
 static int response_fd = -1;
@@ -54,12 +55,23 @@ int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char
     // se o cliente só chama a função uma vez por sessão, acho que é desnecessario
     if (req_len >= MAX_PIPE_PATH_LENGTH || resp_len >= MAX_PIPE_PATH_LENGTH) return 1;
 
-    if (mkfifo(req_pipe_path, S_IRUSR | S_IWUSR) == -1) {
+    if (unlink(req_pipe_path) == -1 && errno != ENOENT) {
+        perror("[ERR]: unlink(%s) failed");
         return 1;
     }
 
-    if (mkfifo(resp_pipe_path, S_IRUSR | S_IWUSR) == -1) {
-        unlink(req_pipe_path);
+    if (mkfifo(req_pipe_path, 0640) == -1) {
+        perror("[ERR]: mkfifo failed");
+        return 1;
+    }
+
+    if (unlink(resp_pipe_path) == -1 && errno != ENOENT) {
+        perror("[ERR]: unlink(%s) failed");
+        return 1;
+    }
+
+    if (mkfifo(resp_pipe_path, 0640) == -1) {
+        perror("[ERR]: mkfifo failed");
         return 1;
     }
 
@@ -88,16 +100,16 @@ int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char
         return 1;
     }
 
-    int req_fd = open(req_pipe_path, O_WRONLY);
-    if (req_fd == -1) {
+    request_fd = open(req_pipe_path, O_WRONLY);
+    if (request_fd == -1) {
         unlink(req_pipe_path);
         unlink(resp_pipe_path);
         return 1;
     }
 
-    int resp_fd = open(resp_pipe_path, O_RDONLY);
-    if (resp_fd == -1) {
-        close(req_fd);
+    response_fd = open(resp_pipe_path, O_RDONLY);
+    if (response_fd == -1) {
+        close(request_fd);
         unlink(req_pipe_path);
         unlink(resp_pipe_path);
         return 1;
@@ -108,20 +120,17 @@ int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char
     size_t num_servers = 0, ram = 0, disk = 0;
     double cpus = 0.0;
 
-    if (read_all(resp_fd, &result, sizeof(result)) != 1 || result != 0 ||
-        read_all(resp_fd, &num_servers, sizeof(num_servers)) != 1 ||
-        read_all(resp_fd, &ram, sizeof(ram)) != 1 ||
-        read_all(resp_fd, &disk, sizeof(disk)) != 1 ||
-        read_all(resp_fd, &cpus, sizeof(cpus)) != 1) {
-        close(req_fd);
-        close(resp_fd);
+    if (read_all(response_fd, &result, sizeof(result)) != 1 || result != 0 ||
+        read_all(response_fd, &num_servers, sizeof(num_servers)) != 1 ||
+        read_all(response_fd, &ram, sizeof(ram)) != 1 ||
+        read_all(response_fd, &disk, sizeof(disk)) != 1 ||
+        read_all(response_fd, &cpus, sizeof(cpus)) != 1) {
+        close(request_fd);
+        close(response_fd);
         unlink(req_pipe_path);
         unlink(resp_pipe_path);
         return 1;
     }
-
-    request_fd = req_fd;
-    response_fd = resp_fd;
     strcpy(request_path, req_pipe_path);
     strcpy(response_path, resp_pipe_path);
 

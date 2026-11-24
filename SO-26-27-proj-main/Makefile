@@ -1,28 +1,51 @@
 CC = gcc
 
-CFLAGS = -g -std=c17 -D_POSIX_C_SOURCE=200809L \
-		 -Wall -Werror -Wextra \
-		 -Wcast-align -Wconversion -Wfloat-equal -Wformat=2 -Wnull-dereference -Wshadow -Wsign-conversion -Wswitch-enum -Wundef -Wunreachable-code -Wunused \
- 		 -fsanitize=undefined
+CFLAGS = -g -std=c2x -D_POSIX_C_SOURCE=200809L -Icommon -pthread \
+	-Wall -Werror -Wextra \
+	-Wcast-align -Wconversion -Wfloat-equal -Wformat=2 \
+	-Wnull-dereference -Wshadow -Wsign-conversion -Wswitch-enum \
+	-Wundef -Wunreachable-code -Wunused -fsanitize=undefined
 
-ifneq ($(shell uname -s),Darwin) # if not MacOS
-	CFLAGS += -fmax-errors=5
+ifneq ($(shell uname -s),Darwin)
+CFLAGS += -fmax-errors=5
 endif
 
-all: cloudIST
+.PHONY: all client clean format run run-client
 
-cloudIST: main.c constants.h parser.o datacenter.o datacenter_utils.o resources.o filesystem.o
-	$(CC) $(CFLAGS) $(SLEEP) -o cloudIST main.c parser.o datacenter.o datacenter_utils.o resources.o filesystem.o -lm
+TARGETS = cloudIST client/client
 
-%.o: %.c %.h
-	$(CC) $(CFLAGS) -c ${@:.o=.c}
+SERVER_OBJS = server/main.o server/parser.o server/datacenter.o \
+              server/datacenter_utils.o server/resources.o server/filesystem.o
+
+CLIENT_OBJS = client/client.o client/parser.o client/api.o client/filesystem.o
+
+HEADERS = $(wildcard common/*.h server/*.h client/*.h)
+
+SERVER_ARGS = 1 4 4 2 1 2 reg
+CLIENT_ARGS = 1 q1 a1 reg
+
+all: $(TARGETS)
+
+cloudIST: $(SERVER_OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+client: client/client
+
+client/client: $(CLIENT_OBJS)
+	$(CC) $(CFLAGS) -o $@ $^
+
+%.o: %.c $(HEADERS)
+	$(CC) $(CFLAGS) -c $< -o $@
 
 run: cloudIST
-	@./cloudIST
+	@./cloudIST $(SERVER_ARGS)
+
+run-client: client/client
+	@./client/client $(CLIENT_ARGS)
 
 clean:
-	rm -f *.o cloudIST
+	rm -f $(SERVER_OBJS) $(CLIENT_OBJS) $(TARGETS)
 
 format:
-	@which clang-format >/dev/null 2>&1 || echo "Please install clang-format to run this command"
-	clang-format -i *.c *.h
+	@command -v clang-format >/dev/null 2>&1 || { echo "Please install clang-format to run this command"; exit 1; }
+	clang-format -i server/*.c server/*.h client/*.c client/*.h common/*.h
