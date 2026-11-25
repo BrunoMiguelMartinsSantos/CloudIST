@@ -228,6 +228,28 @@ int accept_client(int register_fd, const DataCenter *dc, unsigned int *client_id
 	return 0;
 }
 
+process_client(const DataCenter *dc, unsigned int client_id, int request_fd, int response_fd){
+	char opcode;
+	while (1){
+		int received = read_all(request_fd, &opcode, sizeof(opcode));
+		if(received != 1){
+			return 1;
+		}
+		switch(opcode){
+			case '2':{
+				char *reservation_id = reservation_id_exists(&dc, &reservation_id);
+				reservation_destroy(&dc, reservation_id);
+				break;
+			}
+		
+		
+		
+		
+		}
+	}
+
+}
+
 
 int main(int argc, char **argv){
 	if (argc != 8) {
@@ -296,8 +318,8 @@ int main(int argc, char **argv){
         int request_fd, response_fd;
         status = accept_client(register_fd, &dc, &client_id, &request_fd, &response_fd);
         if (status != 0) break;
-        char opcode;
-        int received = read_all(request_fd, &opcode, sizeof(opcode));
+
+		process_client(&dc, client_id, request_fd, response_fd);
         close(request_fd);
         close(response_fd);
     }

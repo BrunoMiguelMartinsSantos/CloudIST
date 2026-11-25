@@ -64,8 +64,8 @@ int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char
     // retirei a verificação anterior pq o mkfifo já faz isso e dá pra distinguir pelo erro retornado.
     // E não é possível o cliente estar ligado a um pipe, sendo que n
 
-    //Não é melhor meter : S_IRUSR | S_IWUSR | S_IRGRP ?
-    if (mkfifo(req_pipe_path, 0640) == -1) {
+
+    if (mkfifo(req_pipe_path, S_IRUSR | S_IWUSR | S_IRGRP) == -1) {
         if (errno == EEXIST) {
             fprintf(stderr,"Path (%s) to fifo already exists.", req_pipe_path);
         }
@@ -75,8 +75,7 @@ int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char
         return 1;
     }
 
-    //Não é melhor meter : S_IRUSR | S_IWUSR | S_IWGRP ?
-    if (mkfifo(resp_pipe_path, 0620) == -1) {
+    if (mkfifo(resp_pipe_path, S_IRUSR | S_IWUSR | S_IWGRP) == -1) {
         if (errno == EEXIST) {
             fprintf(stderr,"Path (%s) to fifo already exists.", req_pipe_path);
         }
@@ -110,7 +109,6 @@ int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char
     }
 
     char msg[4 + 2 * MAX_PIPE_PATH_LENGTH + sizeof(client_id)];
-    //mudei só pra perceber que preenche tudo com '\0'
     memset(msg, '\0', sizeof(msg));
     msg[0] = '1';
     msg[1] = '|';
@@ -158,10 +156,9 @@ int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char
 
 
 int cloudIst_disconnect(void){
-    //TODO close pipes
     if (request_fd == -1) return 1;
 
-    char opcode = 2;
+    char opcode = '2';
     int sent = write_all(request_fd, &opcode, sizeof(opcode));
 
     close(request_fd);
