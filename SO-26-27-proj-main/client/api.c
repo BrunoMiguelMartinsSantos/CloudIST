@@ -53,50 +53,37 @@ int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char
 
     // nao sei se é preciso verificar tbm se request_fd >= 0?
     // se o cliente só chama a função uma vez por sessão, acho que é desnecessario
-    if (req_len >= MAX_PIPE_PATH_LENGTH || resp_len >= MAX_PIPE_PATH_LENGTH) return 1;
-
-    if (unlink(req_pipe_path) == -1 && errno != ENOENT) {
-        perror("[ERR]: unlink(%s) failed");
+    
+    // acho q é preciso, pq se o fifo do servidor ainda não existir o código continua a correr e tenta enviar algo para um pipe que não existe
+    // agora se é suposto que o cliente espere ou termine, n sei
+    if (req_len >= MAX_PIPE_PATH_LENGTH || resp_len >= MAX_PIPE_PATH_LENGTH){
+        perror("invalid path to new fifo");
         return 1;
     }
 
+    // retirei a verificação anterior pq o mkfifo já faz isso e dá pra distinguir pelo erro retornado.
+    // E não é possível o cliente estar ligado a um pipe, sendo que n
+
+    //Não é melhor meter : S_IRUSR | S_IWUSR | S_IRGRP ?
     if (mkfifo(req_pipe_path, 0640) == -1) {
-        perror("[ERR]: mkfifo failed");
+        if (errno == EEXIST) {
+            fprintf(stderr,"Path (%s) to fifo already exists.", req_pipe_path);
+        }
+        else{
+            perror("[ERR]: mkfifo failed");
+        }
         return 1;
     }
 
-    if (unlink(resp_pipe_path) == -1 && errno != ENOENT) {
-        perror("[ERR]: unlink(%s) failed");
-        return 1;
-    }
-
-    if (mkfifo(resp_pipe_path, 0640) == -1) {
-        perror("[ERR]: mkfifo failed");
-        return 1;
-    }
-
-    int reg_fd = open(server_pipe_path, O_WRONLY);
-    if (reg_fd == -1) {
+    //Não é melhor meter : S_IRUSR | S_IWUSR | S_IWGRP ?
+    if (mkfifo(resp_pipe_path, 0620) == -1) {
+        if (errno == EEXIST) {
+            fprintf(stderr,"Path (%s) to fifo already exists.", req_pipe_path);
+        }
+        else{
+            perror("[ERR]: mkfifo failed");
+        }
         unlink(req_pipe_path);
-        unlink(resp_pipe_path);
-        return 1;
-    }
-
-    char msg[1 + 2 * MAX_PIPE_PATH_LENGTH + sizeof(client_id)];
-    memset(msg, 0, sizeof(msg));
-    msg[0] = 1;
-
-    memcpy(msg + 1, req_pipe_path, req_len);
-    memcpy(msg + 1 + MAX_PIPE_PATH_LENGTH, resp_pipe_path, resp_len);
-    memcpy(msg + 1 + 2 * MAX_PIPE_PATH_LENGTH, &client_id, sizeof(client_id));
-
-    int sent = write_all(reg_fd, msg, sizeof(msg));
-
-    close(reg_fd);
-
-    if (sent != 1) {
-        unlink(req_pipe_path);
-        unlink(resp_pipe_path);
         return 1;
     }
 
@@ -114,6 +101,37 @@ int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char
         unlink(resp_pipe_path);
         return 1;
     }
+
+    int reg_fd = open(server_pipe_path, O_WRONLY);
+    if (reg_fd == -1) {
+        unlink(req_pipe_path);
+        unlink(resp_pipe_path);
+        return 1;
+    }
+
+    char msg[4 + 2 * MAX_PIPE_PATH_LENGTH + sizeof(client_id)];
+    //mudei só pra perceber que preenche tudo com '\0'
+    memset(msg, '\0', sizeof(msg));
+    msg[0] = '1';
+    msg[1] = '|';
+
+    memcpy(msg + 2, req_pipe_path, req_len);
+    msg[2 + MAX_PIPE_PATH_LENGTH] = '|';
+    memcpy(msg + 3 + MAX_PIPE_PATH_LENGTH, resp_pipe_path, resp_len);
+    msg[3 + 2 * MAX_PIPE_PATH_LENGTH] = '|';
+    memcpy(msg + 4 + 2 * MAX_PIPE_PATH_LENGTH, &client_id, sizeof(client_id));
+
+    int sent = write_all(reg_fd, msg, sizeof(msg));
+
+    close(reg_fd);
+
+    
+    if (sent == -1) {
+        unlink(req_pipe_path);
+        unlink(resp_pipe_path);
+        return 1;
+    }
+
 
     // TODO: These values should be initialized with data received from the server
     char result;
