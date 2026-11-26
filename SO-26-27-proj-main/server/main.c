@@ -273,17 +273,17 @@ int main(int argc, char **argv){
 				}
 
 				case 6: {
-					ListResponse response = {0};
+					ListResponse lista = {0};
 
 					// Mantém a contagem e a lista consistentes enquanto a wait thread
 					// pode ter VMs terminadas para remover.
 					pthread_rwlock_wrlock(&dc.state_lock);
 
 					for (size_t i = 0; i < dc.num_servers; i++) {
-						response.num_vms += dc.servers[i].num_hosted_vms;
+						lista.num_vms += dc.servers[i].num_hosted_vms;
 					}
 
-					if (write_all(response_fd, &response, sizeof(response)) != 1) {
+					if (write_all(response_fd, &lista, sizeof(lista)) != 1) {
 						end_client = true;
 					}
 
