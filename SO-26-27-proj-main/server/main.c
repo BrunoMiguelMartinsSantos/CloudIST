@@ -12,141 +12,6 @@
 #include <sys/stat.h>
 #include <string.h>
 
-/*
-static int process_commands(DataCenter *dc, int fd) {
-	while(1){
-		switch (get_next_command(fd)){
-			case CMD_DEFINE: {
-				VMType vmtype;
-				// Lê os argumentos do ficheiro .conf atual
-				if (parse_define(fd, &vmtype) != 0) {
-    				pthread_mutex_lock(&dc->output_mutex);
-					fprintf(stderr, "Invalid define command. See H (help) for usage.\n");
-					pthread_mutex_unlock(&dc->output_mutex);
-					continue;
-				}
-				pthread_rwlock_rdlock(&dc->state_lock);
-				pthread_mutex_lock(&dc->mutex);
-				int result = datacenter_define_VM(dc, &vmtype);
-				pthread_mutex_unlock(&dc->mutex);
-				pthread_rwlock_unlock(&dc->state_lock);
-				if (result != 0) {
-    				pthread_mutex_lock(&dc->output_mutex);
-					fprintf(stderr, "Failed to define VM.\n");
-					pthread_mutex_unlock(&dc->output_mutex);
-					continue;
-				}
-				pthread_mutex_lock(&dc->output_mutex);
-				printf("VM successfully defined!\n");
-				pthread_mutex_unlock(&dc->output_mutex);
-				break;
-			}
-
-			case CMD_RESERVE: {
-				Reservation reservation = {0};
-				size_t num_items = parse_reserve(fd, &reservation, MAX_RESERVATIONS_ITEMS);
-				if (num_items == 0) {
-					pthread_mutex_lock(&dc->output_mutex);
-					fprintf(stderr, "Invalid reserve command. See H (help) for usage.\n");
-					pthread_mutex_unlock(&dc->output_mutex);
-					continue;
-				}
-				pthread_rwlock_rdlock(&dc->state_lock);
-				int result = datacenter_reserve(dc,&reservation);
-				pthread_rwlock_unlock(&dc->state_lock);
-				if (result != 0) {
-					pthread_mutex_lock(&dc->output_mutex);
-					fprintf(stderr, "Failed to reserve VMs.\n");
-					pthread_mutex_unlock(&dc->output_mutex);
-					continue;
-				}
-				pthread_mutex_lock(&dc->output_mutex);
-				printf("Reservation made successfully!\n");
-				pthread_mutex_unlock(&dc->output_mutex);
-				break;
-			}
-
-			case CMD_EXECUTE: {
-				char id[MAX_STRING_SIZE];
-				if(parse_execute(fd, id) != 0){
-					pthread_mutex_lock(&dc->output_mutex);
-					fprintf(stderr, "Invalid execute command. See H (help) for usage.\n");
-					pthread_mutex_unlock(&dc->output_mutex);
-					continue;
-				}
-				pthread_rwlock_rdlock(&dc->state_lock);
-				pthread_mutex_lock(&dc->mutex);
-				int result = datacenter_execute(dc, id);
-				pthread_mutex_unlock(&dc->mutex);
-				pthread_rwlock_unlock(&dc->state_lock);
-				if (result != 0) {
-					pthread_mutex_lock(&dc->output_mutex);
-					fprintf(stderr, "Failed to execute reservation.\n");
-					pthread_mutex_unlock(&dc->output_mutex);
-					continue;
-				}
-				pthread_mutex_lock(&dc->output_mutex);
-				printf("Finished reservation execution!\n");
-				pthread_mutex_unlock(&dc->output_mutex);
-				break;
-			}
-
-			case CMD_LIST: {
-				pthread_rwlock_wrlock(&dc->state_lock);
-				pthread_mutex_lock(&dc->output_mutex);
-				int result = datacenter_list(dc);
-				pthread_mutex_unlock(&dc->output_mutex);
-				pthread_rwlock_unlock(&dc->state_lock);
-				if (result != 0) {
-					pthread_mutex_lock(&dc->output_mutex);
-					fprintf(stderr, "Failed to list VMs.\n");
-					pthread_mutex_unlock(&dc->output_mutex);
-					continue;
-				}
-				break;
-			}
-
-			case CMD_WAIT: {
-				unsigned int delay;
-				if(parse_wait(fd, &delay) != 0){
-					pthread_mutex_lock(&dc->output_mutex);
-					fprintf(stderr, "Invalid wait command. See H (help) for usage.\n");		
-					pthread_mutex_unlock(&dc->output_mutex);
-					continue;
-				}
-				datacenter_wait(delay);
-				break;
-			}
-			case CMD_INVALID:
-				pthread_mutex_lock(&dc->output_mutex);
-				fprintf(stderr, "Invalid Command. See H (help) for usage.\n");
-				pthread_mutex_unlock(&dc->output_mutex);
-				break;
-
-			case CMD_HELP:
-				pthread_mutex_lock(&dc->output_mutex);
-				printf(
-					"Spaces between arguments are allowed, but not after command end.\n"
-					"Available commands:\n"
-					" D <VM_TYPE_ID> <INPUT_FOLDER> <EXECUTABLE_PATH> <RAM_NEEDED> <DISK_NEEDED> <VCPU_NEEDED_COUNT>\n"
-					" R <RESERVATION_ID> [<VM_TYPE_ID> <COUNT> <SERVER_ID>]+\n"
-					" A <RESERVATION_ID>\n"
-					" L\n"
-					" E <DELAY_MS>\n"
-					" H\n"
-				);
-				pthread_mutex_unlock(&dc->output_mutex);
-				break;
-
-			case CMD_EMPTY:
-				break;
-
-			case EOC:
-				return 0;
-		}
-	}
-}*/
-
 // Informação partilhada pelas worker threads.
 typedef struct {
     DataCenter *dc;
@@ -198,57 +63,6 @@ static void *worker_thread(void *arg) {
     }
 }
 */
-
-int accept_client(int register_fd, const DataCenter *dc, unsigned int *client_id, int *request_fd, int *response_fd) {
-	char msg[1 + 2 * MAX_PIPE_PATH_LENGTH + sizeof(*client_id)];
-	if (read_all(register_fd, msg, sizeof(msg)) != 1 || msg[0] != 1) return 1;
-	char const *req_path = msg + 1;
-	char const *resp_path = msg + 1 + MAX_PIPE_PATH_LENGTH;
-	memcpy(client_id, msg + 1 + 2 * MAX_PIPE_PATH_LENGTH, sizeof(*client_id));
-	*request_fd = open(req_path, O_RDONLY);
-    if (*request_fd == -1) {
-        return 1;
-    }
-    *response_fd = open(resp_path, O_WRONLY);
-    if (*response_fd == -1) {
-        close(*request_fd);
-        return 1;
-    }
-	char result = 0;
-	const Resources *total = &dc->servers[0].total;
-	if (write_all(*response_fd, &result, sizeof(result)) != 1 ||
-        write_all(*response_fd, &dc->num_servers, sizeof(dc->num_servers)) != 1 ||
-        write_all(*response_fd, &total->ram, sizeof(total->ram)) != 1 ||
-        write_all(*response_fd, &total->disk, sizeof(total->disk)) != 1 ||
-        write_all(*response_fd, &total->cpu, sizeof(total->cpu)) != 1) {
-        close(*request_fd);
-        close(*response_fd);
-        return 1;
-    }
-	return 0;
-}
-
-process_client(const DataCenter *dc, unsigned int client_id, int request_fd, int response_fd){
-	char opcode;
-	while (1){
-		int received = read_all(request_fd, &opcode, sizeof(opcode));
-		if(received != 1){
-			return 1;
-		}
-		switch(opcode){
-			case '2':{
-				char *reservation_id = reservation_id_exists(&dc, &reservation_id);
-				reservation_destroy(&dc, reservation_id);
-				break;
-			}
-		
-		
-		
-		
-		}
-	}
-
-}
 
 
 int main(int argc, char **argv){
@@ -311,21 +125,99 @@ int main(int argc, char **argv){
         return 1;
     }
 
-	int status;
+	ConnectRequest request;
+    int received;
 
-	while (1) {
-        unsigned int client_id;
-        int request_fd, response_fd;
-        status = accept_client(register_fd, &dc, &client_id, &request_fd, &response_fd);
-        if (status != 0) break;
+    while ((received = read_all(register_fd, &request, sizeof request)) == 1) {
+        if (request.opcode != 1) {
+            fprintf(stderr, "Unexpected opcode on register FIFO.\n");
+            continue;
+        }
 
-		process_client(&dc, client_id, request_fd, response_fd);
+        int request_fd = open(request.request_path, O_RDONLY);
+        if (request_fd == -1) {
+            perror(request.request_path);
+            continue;
+        }
+
+        int response_fd = open(request.response_path, O_WRONLY);
+        if (response_fd == -1) {
+            perror(request.response_path);
+            close(request_fd);
+            continue;
+        }
+
+        ConnectResponse response;
+        response.result = 0;
+        response.num_servers = dc.num_servers;
+        response.ram = dc.servers[0].total.ram;
+        response.disk = dc.servers[0].total.disk;
+        response.cpus = dc.servers[0].total.cpu;
+
+		// O cliente espera pela resposta ao CONNECT antes de enviar comandos.
+        if (write_all(response_fd, &response, sizeof response) != 1) {
+            close(request_fd);
+            close(response_fd);
+            continue;
+        }
+
+        char opcode;
+		int received_opcode = read_all(request_fd, &opcode, sizeof opcode);
+
+		while (received_opcode == 1) {
+			switch (opcode) {
+				case DISCONNECT:
+					break;
+
+				case DEFINE: {
+					// O opcode já foi lido. Falta receber a definição da VM.
+					VMType vm_type;
+					received_opcode = read_all(request_fd, &vm_type, sizeof vm_type);
+					if (received_opcode != 1) {
+						break;
+					}
+
+					char result = 0;
+
+					pthread_rwlock_rdlock(&dc.state_lock);
+					pthread_mutex_lock(&dc.mutex);
+					if (datacenter_define_VM(&dc, &vm_type) != 0) {
+						result = 1;
+					}
+					pthread_mutex_unlock(&dc.mutex);
+					pthread_rwlock_unlock(&dc.state_lock);
+
+					// O cliente recebe 0 se a definição foi aceite e 1 se falhou.
+                    if (write_all(response_fd, &result, sizeof result) != 1) {
+                        received_opcode = -1;
+                    }
+					break;
+					}
+				case 4:  // R: reservar
+				case 5:  // A: arrancar
+				case 6:  // L: listar
+				default:
+					break;
+			}
+
+			if (opcode == DISCONNECT || received_opcode != 1) {
+				break;
+			}
+
+			received_opcode = read_all(request_fd, &opcode, sizeof opcode);
+		}
+
         close(request_fd);
         close(response_fd);
     }
+
     close(register_write_fd);
     close(register_fd);
     unlink(register_fifo);
     datacenter_destroy(&dc);
-    return status;
+
+    if (received == -1) {
+        return 1;
+    }
+    return 0;
 }

@@ -2,14 +2,9 @@
 #define COMMON__H
 #include <stddef.h>
 #include <sys/types.h>
-
+#include <pthread.h>
 #include "constants.h"
-
-typedef struct {
-    size_t ram;  // RAM in GB
-    size_t disk; // Disk Space in GB
-    double cpu;  // Number of cores/Vcpu
-} Resources;
+#include "resources.h"
 
 typedef struct VMType{
     char id[MAX_STRING_SIZE];        // Id of VM type. eg: "V1"
@@ -43,7 +38,7 @@ typedef struct Server {
     VM *hosted_vms[MAX_HOSTED_VMS];
     size_t num_hosted_vms;
 
-    pthread_mutex_t lock;
+    pthread_mutex_t mutex;
 } Server;
 
 typedef enum {
@@ -71,5 +66,36 @@ typedef struct Reservation {
     size_t running_vms;                           
     ReservationState state;                         // State of the reservation.
 } Reservation;
+
+// Opcodes for client-server communication
+typedef enum {
+  CONNECT = 1,
+  DISCONNECT = 2,
+  DEFINE = 3,
+  RESERVE = 4,
+  EXE = 5,
+  LIST = 6,
+  NOOP = 7
+} Opcode;
+
+// Pedido CONNECT enviado pelo cliente no FIFO de registo.
+// Os caminhos identificam os dois FIFOs privados da sessão.
+typedef struct {
+    char opcode;
+    char request_path[MAX_PIPE_PATH_LENGTH];
+    char response_path[MAX_PIPE_PATH_LENGTH];
+    unsigned int client_id;
+} ConnectRequest;
+
+// Resposta ao CONNECT enviada pelo servidor no FIFO de respostas.
+// Se result for 0, a ligação foi aceite e os restantes campos indicam
+// o número de servidores e os recursos disponíveis por servidor.
+typedef struct {
+    char result;
+    size_t num_servers;
+    size_t ram;
+    size_t disk;
+    double cpus;
+} ConnectResponse;
 
 #endif // COMMON_H

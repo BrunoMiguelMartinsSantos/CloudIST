@@ -11,6 +11,7 @@
 #include "parser.h"
 #include "filesystem.h"
 
+// Guarda os descritores da sessão e os caminhos dos FIFOs para os remover no disconnect.
 static int request_fd = -1;
 static int response_fd = -1;
 static char request_path[MAX_PIPE_PATH_LENGTH];
@@ -47,23 +48,13 @@ void print_vm(char * vm_id, char * vm_type_id, size_t server_id, char vm_state) 
                 convert_vm_state_to_string((VMState) vm_state));
 }
 
+// O cliente cria os dois FIFOs privados. Se a ligação falhar, remove os que já criou.
 int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char const* server_pipe_path, unsigned int client_id) {
-    size_t req_len = strlen(req_pipe_path);
-    size_t resp_len = strlen(resp_pipe_path);
-
-    // nao sei se é preciso verificar tbm se request_fd >= 0?
-    // se o cliente só chama a função uma vez por sessão, acho que é desnecessario
-    
-    // acho q é preciso, pq se o fifo do servidor ainda não existir o código continua a correr e tenta enviar algo para um pipe que não existe
-    // agora se é suposto que o cliente espere ou termine, n sei
-    if (req_len >= MAX_PIPE_PATH_LENGTH || resp_len >= MAX_PIPE_PATH_LENGTH){
+    if (request_fd >= 0) return 1;
+    if (strlen(req_pipe_path) >= MAX_PIPE_PATH_LENGTH || strlen(resp_pipe_path) >= MAX_PIPE_PATH_LENGTH){
         perror("invalid path to new fifo");
         return 1;
     }
-
-    // retirei a verificação anterior pq o mkfifo já faz isso e dá pra distinguir pelo erro retornado.
-    // E não é possível o cliente estar ligado a um pipe, sendo que n
-
 
     if (mkfifo(req_pipe_path, S_IRUSR | S_IWUSR | S_IRGRP) == -1) {
         if (errno == EEXIST) {
@@ -85,9 +76,34 @@ int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char
         unlink(req_pipe_path);
         return 1;
     }
+    // O CONNECT envia o ID do cliente e os dois caminhos em campos de tamanho fixo.
+    // O strncpy preenche com zeros o espaço que sobra em cada caminho.
+    ConnectRequest request;
+    request.opcode = 1;
+    request.client_id = client_id;
+    strncpy(request.request_path, req_pipe_path, sizeof request.request_path);
+    strncpy(request.response_path, resp_pipe_path, sizeof request.response_path);
+
+    int reg_fd = open(server_pipe_path, O_WRONLY);
+    if (reg_fd == -1) {
+        perror(server_pipe_path);
+        unlink(req_pipe_path);
+        unlink(resp_pipe_path);
+        return 1;
+    }
+
+    int sent = write_all(reg_fd, &request, sizeof request);
+    close(reg_fd);
+
+    if (sent != 1) {
+        unlink(req_pipe_path);
+        unlink(resp_pipe_path);
+        return 1;
+    }
 
     request_fd = open(req_pipe_path, O_WRONLY);
     if (request_fd == -1) {
+        perror(req_pipe_path);
         unlink(req_pipe_path);
         unlink(resp_pipe_path);
         return 1;
@@ -95,70 +111,38 @@ int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char
 
     response_fd = open(resp_pipe_path, O_RDONLY);
     if (response_fd == -1) {
+        perror(resp_pipe_path);
         close(request_fd);
+        request_fd = -1;
         unlink(req_pipe_path);
         unlink(resp_pipe_path);
         return 1;
     }
 
-    int reg_fd = open(server_pipe_path, O_WRONLY);
-    if (reg_fd == -1) {
-        unlink(req_pipe_path);
-        unlink(resp_pipe_path);
-        return 1;
-    }
-
-    char msg[4 + 2 * MAX_PIPE_PATH_LENGTH + sizeof(client_id)];
-    memset(msg, '\0', sizeof(msg));
-    msg[0] = '1';
-    msg[1] = '|';
-
-    memcpy(msg + 2, req_pipe_path, req_len);
-    msg[2 + MAX_PIPE_PATH_LENGTH] = '|';
-    memcpy(msg + 3 + MAX_PIPE_PATH_LENGTH, resp_pipe_path, resp_len);
-    msg[3 + 2 * MAX_PIPE_PATH_LENGTH] = '|';
-    memcpy(msg + 4 + 2 * MAX_PIPE_PATH_LENGTH, &client_id, sizeof(client_id));
-
-    int sent = write_all(reg_fd, msg, sizeof(msg));
-
-    close(reg_fd);
-
-    
-    if (sent == -1) {
-        unlink(req_pipe_path);
-        unlink(resp_pipe_path);
-        return 1;
-    }
-
-
-    // TODO: These values should be initialized with data received from the server
-    char result;
-    size_t num_servers = 0, ram = 0, disk = 0;
-    double cpus = 0.0;
-
-    if (read_all(response_fd, &result, sizeof(result)) != 1 || result != 0 ||
-        read_all(response_fd, &num_servers, sizeof(num_servers)) != 1 ||
-        read_all(response_fd, &ram, sizeof(ram)) != 1 ||
-        read_all(response_fd, &disk, sizeof(disk)) != 1 ||
-        read_all(response_fd, &cpus, sizeof(cpus)) != 1) {
+    ConnectResponse response;
+    if (read_all(response_fd, &response, sizeof response) != 1 ||
+        response.result != 0) {
         close(request_fd);
         close(response_fd);
+        request_fd = -1;
+        response_fd = -1;
         unlink(req_pipe_path);
         unlink(resp_pipe_path);
         return 1;
     }
+
     strcpy(request_path, req_pipe_path);
     strcpy(response_path, resp_pipe_path);
 
-    pretty_print_cloud_specs(num_servers, ram, disk, cpus);
+    pretty_print_cloud_specs(response.num_servers, response.ram, response.disk, response.cpus);
     return 0;
 }
 
-
+// O DISCONNECT não tem resposta. Após o envio, o cliente fecha e remove os seus FIFOs.
 int cloudIst_disconnect(void){
     if (request_fd == -1) return 1;
 
-    char opcode = '2';
+    char opcode = (char) DISCONNECT;
     int sent = write_all(request_fd, &opcode, sizeof(opcode));
 
     close(request_fd);
@@ -169,18 +153,34 @@ int cloudIst_disconnect(void){
     request_fd = -1;
     response_fd = -1;
 
-    if (sent == 1) {
-        return 0;
-    }
+    if (sent == 1) return 0;
+
     return 1;
 }
 
+// Envia o opcode seguido da definição da VM pelo FIFO de pedidos.
+// O servidor devolve um byte pelo FIFO de respostas: 0 indica sucesso.
 int cloudIst_define(VMType vm_type) {
-    (void) vm_type;
-    //TODO: send define command to the server (through the request pipe) and wait for the response (through the response pipe)
-    printf("Implement me pls\n");
+    char opcode = (char) DEFINE;
+    VMType pedido;
+
+    strncpy(pedido.id, vm_type.id, sizeof pedido.id);
+    strncpy(pedido.input_folder, vm_type.input_folder, sizeof pedido.input_folder);
+    strncpy(pedido.exec_path, vm_type.exec_path, sizeof pedido.exec_path);
+    pedido.required = vm_type.required;
+
+    if (write_all(request_fd, &opcode, sizeof opcode) != 1 || write_all(request_fd, &pedido, sizeof pedido) != 1) {
+        return 1;
+    }
+
+    char result;
+    if (read_all(response_fd, &result, sizeof result) != 1 || result != 0) {
+        return 1;
+    }
+
     return 0;
 }
+
 
 int cloudIst_reserve(Reservation reservation) {
     (void) reservation;

@@ -6,18 +6,6 @@
 #include "common.h"
 #include "parser.h"
 
-// Opcodes for client-server communication
-typedef enum {
-  CONNECT = 1,
-  DISCONNECT = 2,
-  DEFINE = 3,
-  RESERVE = 4,
-  EXE = 5,
-  LIST = 6,
-  NOOP = 7
-} Opcode;
-
-
 /// Connects to an CloudIst server.
 /// @param req_pipe_path Path to the name pipe to be created for requests.
 /// @param resp_pipe_path Path to the name pipe to be created for responses.
