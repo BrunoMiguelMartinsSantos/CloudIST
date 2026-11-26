@@ -79,7 +79,7 @@ int cloudIst_connect(char const* req_pipe_path, char const* resp_pipe_path, char
     // O CONNECT envia o ID do cliente e os dois caminhos em campos de tamanho fixo.
     // O strncpy preenche com zeros o espaço que sobra em cada caminho.
     ConnectRequest request;
-    request.opcode = 1;
+    request.opcode = CONNECT;
     request.client_id = client_id;
     strncpy(request.request_path, req_pipe_path, sizeof request.request_path);
     strncpy(request.response_path, resp_pipe_path, sizeof request.response_path);

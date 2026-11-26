@@ -116,7 +116,8 @@ int main(int argc, char **argv){
 		unlink(register_fifo);
 		return 1;
 	}
-
+    //pra q serve isto?
+    //n se pode fazer read e write de um fifo no mm processo
 	int register_write_fd = open(register_fifo, O_WRONLY);
     if (register_write_fd == -1) {
         perror("open");
@@ -126,9 +127,8 @@ int main(int argc, char **argv){
     }
 
 	ConnectRequest request;
-    int received;
 
-    while ((received = read_all(register_fd, &request, sizeof request)) == 1) {
+    while ((read_all(register_fd, &request, sizeof request)) == 1) {
         if (request.opcode != 1) {
             fprintf(stderr, "Unexpected opcode on register FIFO.\n");
             continue;
@@ -161,10 +161,9 @@ int main(int argc, char **argv){
             continue;
         }
 
+        
         char opcode;
-		int received_opcode = read_all(request_fd, &opcode, sizeof opcode);
-
-		while (received_opcode == 1) {
+		while (read_all(request_fd, &opcode, sizeof opcode) == 1) {
 			switch (opcode) {
 				case DISCONNECT:
 					break;
@@ -172,8 +171,7 @@ int main(int argc, char **argv){
 				case DEFINE: {
 					// O opcode já foi lido. Falta receber a definição da VM.
 					VMType vm_type;
-					received_opcode = read_all(request_fd, &vm_type, sizeof vm_type);
-					if (received_opcode != 1) {
+					if (read_all(request_fd, &vm_type, sizeof vm_type) != 1) {
 						break;
 					}
 
@@ -189,22 +187,17 @@ int main(int argc, char **argv){
 
 					// O cliente recebe 0 se a definição foi aceite e 1 se falhou.
                     if (write_all(response_fd, &result, sizeof result) != 1) {
-                        received_opcode = -1;
-                    }
-					break;
+					    break;
 					}
+                }
 				case 4:  // R: reservar
 				case 5:  // A: arrancar
 				case 6:  // L: listar
-				default:
+				
+                default:
 					break;
-			}
-
-			if (opcode == DISCONNECT || received_opcode != 1) {
-				break;
-			}
-
-			received_opcode = read_all(request_fd, &opcode, sizeof opcode);
+                
+            }
 		}
 
         close(request_fd);
@@ -215,9 +208,5 @@ int main(int argc, char **argv){
     close(register_fd);
     unlink(register_fifo);
     datacenter_destroy(&dc);
-
-    if (received == -1) {
-        return 1;
-    }
     return 0;
 }
