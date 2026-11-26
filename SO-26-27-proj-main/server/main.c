@@ -129,7 +129,7 @@ int main(int argc, char **argv){
 	ConnectRequest request;
 
     while ((read_all(register_fd, &request, sizeof request)) == 1) {
-        if (request.opcode != 1) {
+        if (request.opcode != CONNECT) {
             fprintf(stderr, "Unexpected opcode on register FIFO.\n");
             continue;
         }
@@ -193,6 +193,7 @@ int main(int argc, char **argv){
                     if (write_all(response_fd, &result, sizeof result) != 1) {
 					    break;
 					}
+					break;
                 }
 				case 4:  // R: reservar
 				case 5:  // A: arrancar
