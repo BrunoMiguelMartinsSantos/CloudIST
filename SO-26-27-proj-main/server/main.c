@@ -11,6 +11,7 @@
 #include "filesystem.h"
 #include <sys/stat.h>
 #include <string.h>
+#include <stdbool.h>
 
 // Informação partilhada pelas worker threads.
 typedef struct {
@@ -116,8 +117,7 @@ int main(int argc, char **argv){
 		unlink(register_fifo);
 		return 1;
 	}
-    //pra q serve isto?
-    //n se pode fazer read e write de um fifo no mm processo
+    
 	int register_write_fd = open(register_fifo, O_WRONLY);
     if (register_write_fd == -1) {
         perror("open");
@@ -163,16 +163,20 @@ int main(int argc, char **argv){
 
         
         char opcode;
+        bool end_client = false;
 		while (read_all(request_fd, &opcode, sizeof opcode) == 1) {
 			switch (opcode) {
-				case DISCONNECT:
-					break;
+				case DISCONNECT: {
+					end_client = true;
+                    break;
+                }
 
 				case DEFINE: {
 					// O opcode já foi lido. Falta receber a definição da VM.
 					VMType vm_type;
 					if (read_all(request_fd, &vm_type, sizeof vm_type) != 1) {
-						break;
+						
+                        break;
 					}
 
 					char result = 0;
@@ -198,6 +202,7 @@ int main(int argc, char **argv){
 					break;
                 
             }
+            if(end_client) break;
 		}
 
         close(request_fd);
