@@ -184,8 +184,7 @@ int cloudIst_define(VMType vm_type) {
 
 int cloudIst_reserve(Reservation reservation) {
     char opcode = (char) RESERVE;
-    ReserveRequest pedido;
-    ReserveRequestItems pedido_items;
+    ReserveRequest pedido = {0};
 
     strncpy(pedido.reservation_id,reservation.id, sizeof(pedido.reservation_id));
     pedido.items_count=reservation.items_count;
@@ -193,33 +192,34 @@ int cloudIst_reserve(Reservation reservation) {
     if (write_all(request_fd, &opcode, sizeof (char)) != 1 || write_all(request_fd, &pedido, sizeof (pedido)) != 1) {
         return 1;
     }
-    for (int i=0;i<reservation.items_count; i++){
-        strncpy(pedido_items.vm_type_id, reservation.items[i].server_id, sizeof(pedido_items.vm_type_id));
-        pedido_items.amount = reservation.items[i].amount;
-        pedido_items.server_id = reservation.items[i].server_id;
+    // Envia um item de cada vez, pela ordem em que aparece na reserva.
+    for (size_t i = 0; i < reservation.items_count; i++){
+        ReserveRequestItems item = {0} ;
+        strcpy(item.vm_type_id, reservation.items[i].vm_type_id);
+        item.amount = reservation.items[i].amount;
+        item.server_id = reservation.items[i].server_id;
 
-        if (write_all(request_fd, &pedido_items, sizeof (ReserveRequestItems)) != 1) {
+        if (write_all(request_fd, &item, sizeof (ReserveRequestItems)) != 1) {
             return 1;
         }
     }
+    // Depois de enviar todos os itens, espera pela resposta do servidor.
     char result;
     if (read_all(response_fd, &result, sizeof result) != 1 || result != 0) {
         return 1;
     }
-
     return 0;
 }
 
 int cloudIst_run(char *reservation_id) {
-    (void) reservation_id;
+
     //TODO: send run/arranca command to the server (through the request pipe) and wait for the response (through the response pipe)
-    printf("Implement me pls\n");
+
     return 0;
 }
 
 int cloudIst_list_vms() {
     //TODO: send List command to the server (through the request pipe) and wait for the response (through the response pipe)
-    printf("Implement me pls\n");
 
     //TODO: dont forget to print output to stdout using the format from function print_vm()
     return 0;

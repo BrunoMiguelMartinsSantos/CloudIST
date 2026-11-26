@@ -164,6 +164,7 @@ int main(int argc, char **argv){
         
         char opcode;
         bool end_client = false;
+		char session_reservation_id[MAX_STRING_SIZE] = {0};
 		while (read_all(request_fd, &opcode, sizeof(char)) == 1) {
 			switch (opcode) {
 				case DISCONNECT: {
@@ -197,24 +198,48 @@ int main(int argc, char **argv){
                 }
                 case RESERVE: {
                     ReserveRequest reserve;
-                    ReserveRequestItems items;
-                    Reservation new_reservation;
+                    Reservation new_reservation = {0};
                     if (read_all(request_fd, &reserve, sizeof(ReserveRequest)) != 1) {
-                        break;
+                        end_client = true;
+						break;
                     }
                     strcpy(new_reservation.id, reserve.reservation_id);
                     new_reservation.items_count = reserve.items_count;
 
-                    for(int i = 0; i < reserve .items_count; i++){
-                        if (read_all(request_fd, &items, sizeof(ReserveRequestItems)) != 1) {
-						    break;
+                    for(size_t i = 0; i < reserve.items_count; i++){
+                        ReserveRequestItems item;
+						if (read_all(request_fd, &item, sizeof(ReserveRequestItems)) != 1) {
+						    end_client = true;
+							break;
                         }
-                        strcpy(new_reservation.items[i].server_id, items.vm_type_id);
-                        new_reservation.items[i].amount = items.amount;
-                        new_reservation.items[i].server_id = items.server_id;
+                        strcpy(new_reservation.items[i].vm_type_id, item.vm_type_id);
+                        new_reservation.items[i].amount = item.amount;
+                        new_reservation.items[i].server_id = item.server_id;
                     }
-                    //falta o resto.
-                }
+					// Se faltou algum item, sai do case sem tentar criar a reserva.
+                    if (end_client) {
+						break;
+					}
+					// Uma sessão só pode obter uma reserva.
+					char result = 1;
+					if (session_reservation_id[0] == '\0' && new_reservation.items_count > 0) {
+						pthread_rwlock_rdlock(&dc.state_lock);
+						result = (char) datacenter_reserve(&dc, &new_reservation);
+						if (result == 0) {
+							strcpy(session_reservation_id, new_reservation.id);
+							// O LIST precisa de identificar quem reservou cada VM.
+							for (size_t i = 0; i < new_reservation.num_vms; i++) {
+								new_reservation.vms[i]->client_id = (int)request.client_id;
+							}
+						}
+						pthread_rwlock_unlock(&dc.state_lock);
+					}
+					// Envia o resultado pelo FIFO de respostas do cliente.
+					if (write_all(response_fd, &result, sizeof(result)) != 1) {
+						end_client = true;
+					}
+					break;
+				}
 
             
 				case 5:  // A: arrancar
