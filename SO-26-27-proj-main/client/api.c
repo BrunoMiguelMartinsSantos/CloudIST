@@ -143,7 +143,7 @@ int cloudIst_disconnect(void){
     if (request_fd == -1) return 1;
 
     char opcode = (char) DISCONNECT;
-    int sent = write_all(request_fd, &opcode, sizeof(opcode));
+    int sent = write_all(request_fd, &opcode, sizeof(char));
 
     close(request_fd);
     close(response_fd);
@@ -169,12 +169,12 @@ int cloudIst_define(VMType vm_type) {
     strncpy(pedido.exec_path, vm_type.exec_path, sizeof pedido.exec_path);
     pedido.required = vm_type.required;
 
-    if (write_all(request_fd, &opcode, sizeof opcode) != 1 || write_all(request_fd, &pedido, sizeof pedido) != 1) {
+    if (write_all(request_fd, &opcode, sizeof (char)) != 1 || write_all(request_fd, &pedido, sizeof (VMType)) != 1) {
         return 1;
     }
 
     char result;
-    if (read_all(response_fd, &result, sizeof result) != 1 || result != 0) {
+    if (read_all(response_fd, &result, sizeof (char)) != 1 || result != 0) {
         return 1;
     }
 
@@ -183,9 +183,30 @@ int cloudIst_define(VMType vm_type) {
 
 
 int cloudIst_reserve(Reservation reservation) {
-    (void) reservation;
-    //TODO: send reserve command to the server (through the request pipe) and wait for the response (through the response pipe)
-    printf("Implement me pls\n");
+    char opcode = (char) RESERVE;
+    ReserveRequest pedido;
+    ReserveRequestItems pedido_items;
+
+    strncpy(pedido.reservation_id,reservation.id, sizeof(pedido.reservation_id));
+    pedido.items_count=reservation.items_count;
+
+    if (write_all(request_fd, &opcode, sizeof (char)) != 1 || write_all(request_fd, &pedido, sizeof (pedido)) != 1) {
+        return 1;
+    }
+    for (int i=0;i<reservation.items_count; i++){
+        strncpy(pedido_items.vm_type_id, reservation.items[i].server_id, sizeof(pedido_items.vm_type_id));
+        pedido_items.amount = reservation.items[i].amount;
+        pedido_items.server_id = reservation.items[i].server_id;
+
+        if (write_all(request_fd, &pedido_items, sizeof (ReserveRequestItems)) != 1) {
+            return 1;
+        }
+    }
+    char result;
+    if (read_all(response_fd, &result, sizeof result) != 1 || result != 0) {
+        return 1;
+    }
+
     return 0;
 }
 

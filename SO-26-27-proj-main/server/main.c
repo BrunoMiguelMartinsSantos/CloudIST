@@ -128,7 +128,7 @@ int main(int argc, char **argv){
 
 	ConnectRequest request;
 
-    while ((read_all(register_fd, &request, sizeof request)) == 1) {
+    while ((read_all(register_fd, &request, sizeof(ConnectRequest))) == 1) {
         if (request.opcode != CONNECT) {
             fprintf(stderr, "Unexpected opcode on register FIFO.\n");
             continue;
@@ -155,7 +155,7 @@ int main(int argc, char **argv){
         response.cpus = dc.servers[0].total.cpu;
 
 		// O cliente espera pela resposta ao CONNECT antes de enviar comandos.
-        if (write_all(response_fd, &response, sizeof response) != 1) {
+        if (write_all(response_fd, &response, sizeof(ConnectResponse)) != 1) {
             close(request_fd);
             close(response_fd);
             continue;
@@ -164,7 +164,7 @@ int main(int argc, char **argv){
         
         char opcode;
         bool end_client = false;
-		while (read_all(request_fd, &opcode, sizeof opcode) == 1) {
+		while (read_all(request_fd, &opcode, sizeof(char)) == 1) {
 			switch (opcode) {
 				case DISCONNECT: {
 					end_client = true;
@@ -174,7 +174,7 @@ int main(int argc, char **argv){
 				case DEFINE: {
 					// O opcode já foi lido. Falta receber a definição da VM.
 					VMType vm_type;
-					if (read_all(request_fd, &vm_type, sizeof vm_type) != 1) {
+					if (read_all(request_fd, &vm_type, sizeof(VMType)) != 1) {
 						
                         break;
 					}
@@ -190,12 +190,33 @@ int main(int argc, char **argv){
 					pthread_rwlock_unlock(&dc.state_lock);
 
 					// O cliente recebe 0 se a definição foi aceite e 1 se falhou.
-                    if (write_all(response_fd, &result, sizeof result) != 1) {
+                    if (write_all(response_fd, &result, sizeof(char)) != 1) {
 					    break;
 					}
 					break;
                 }
-				case 4:  // R: reservar
+                case RESERVE: {
+                    ReserveRequest reserve;
+                    ReserveRequestItems items;
+                    Reservation new_reservation;
+                    if (read_all(request_fd, &reserve, sizeof(ReserveRequest)) != 1) {
+                        break;
+                    }
+                    strcpy(new_reservation.id, reserve.reservation_id);
+                    new_reservation.items_count = reserve.items_count;
+
+                    for(int i = 0; i < reserve .items_count; i++){
+                        if (read_all(request_fd, &items, sizeof(ReserveRequestItems)) != 1) {
+						    break;
+                        }
+                        strcpy(new_reservation.items[i].server_id, items.vm_type_id);
+                        new_reservation.items[i].amount = items.amount;
+                        new_reservation.items[i].server_id = items.server_id;
+                    }
+                    //falta o resto.
+                }
+
+            
 				case 5:  // A: arrancar
 				case 6:  // L: listar
 				

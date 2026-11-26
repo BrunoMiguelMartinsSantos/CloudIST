@@ -98,4 +98,16 @@ typedef struct {
     double cpus;
 } ConnectResponse;
 
+typedef struct{
+    char vm_type_id[MAX_STRING_SIZE];
+    size_t amount;
+    size_t server_id;
+}ReserveRequestItems;
+
+typedef struct{
+char reservation_id[MAX_STRING_SIZE];
+size_t items_count;
+}ReserveRequest;
+
+
 #endif // COMMON_H
