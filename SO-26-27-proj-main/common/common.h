@@ -102,12 +102,24 @@ typedef struct{
     char vm_type_id[MAX_STRING_SIZE];
     size_t amount;
     size_t server_id;
-}ReserveRequestItems;
+} ReserveRequestItems;
 
 typedef struct{
 char reservation_id[MAX_STRING_SIZE];
 size_t items_count;
-}ReserveRequest;
+} ReserveRequest;
 
+typedef struct __attribute__((packed)) {
+    char result;
+    size_t num_vms;
+} ListResponse;
+
+typedef struct __attribute__((packed)) {
+    char vm_id[44];
+    char vm_type_id[MAX_STRING_SIZE];
+    int client_id;
+    size_t server_id;
+    char vm_state;
+} ListResponseItem;
 
 #endif // COMMON_H

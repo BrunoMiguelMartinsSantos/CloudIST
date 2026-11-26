@@ -212,15 +212,35 @@ int cloudIst_reserve(Reservation reservation) {
 }
 
 int cloudIst_run(char *reservation_id) {
-
-    //TODO: send run/arranca command to the server (through the request pipe) and wait for the response (through the response pipe)
-
-    return 0;
+    char opcode = EXE;
+    char id[MAX_STRING_SIZE] = {0};
+    char result;
+    // O protocolo pede um campo de 40 bytes, preenchido com zeros.
+    strcpy(id, reservation_id);
+    if (write_all(request_fd, &opcode, sizeof(opcode)) != 1 ||
+        write_all(request_fd, id, sizeof(id)) != 1 ||
+        read_all(response_fd, &result, sizeof(result)) != 1) {
+        return 1;
+    }
+    return result != 0;
 }
 
 int cloudIst_list_vms() {
     //TODO: send List command to the server (through the request pipe) and wait for the response (through the response pipe)
+    char opcode = LIST;
+    ListResponse response;
 
+    if (write_all(request_fd, &opcode, sizeof(opcode)) != 1 ||
+        read_all(response_fd, &response, sizeof(response)) != 1 ||
+        response.result != 0) {
+        return 1;
+    }
+
+    for (size_t i = 0; i < response.num_vms; i++) {
+        ListResponseItem item;
+        if (read_all(response_fd, &item, sizeof(item)) != 1) return 1;
+        print_vm(item.vm_id, item.vm_type_id, item.server_id, item.vm_state);
+    }
     //TODO: dont forget to print output to stdout using the format from function print_vm()
     return 0;
 }

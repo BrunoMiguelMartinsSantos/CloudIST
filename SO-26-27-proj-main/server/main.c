@@ -126,6 +126,16 @@ int main(int argc, char **argv){
         return 1;
     }
 
+	pthread_t wait_thread;
+
+	if (pthread_create(&wait_thread, NULL, vm_wait_thread, &dc) != 0) {
+		close(register_write_fd);
+		close(register_fd);
+		unlink(register_fifo);
+		datacenter_destroy(&dc);
+		return 1;
+	}
+
 	ConnectRequest request;
 
     while ((read_all(register_fd, &request, sizeof(ConnectRequest))) == 1) {
@@ -240,10 +250,66 @@ int main(int argc, char **argv){
 					}
 					break;
 				}
-
             
-				case 5:  // A: arrancar
-				case 6:  // L: listar
+				case EXE: {
+					char id[MAX_STRING_SIZE];
+					char result;
+
+					if (read_all(request_fd, id, sizeof(id)) != 1) {
+						end_client = true;
+						break;
+					}
+
+					pthread_rwlock_rdlock(&dc.state_lock);
+					pthread_mutex_lock(&dc.mutex);
+					result = (char) datacenter_execute(&dc, id);
+					pthread_mutex_unlock(&dc.mutex);
+					pthread_rwlock_unlock(&dc.state_lock);
+
+					if (write_all(response_fd, &result, sizeof(result)) != 1) {
+						end_client = true;
+					}
+					break;
+				}
+
+				case 6: {
+					ListResponse response = {0};
+
+					// Mantém a contagem e a lista consistentes enquanto a wait thread
+					// pode ter VMs terminadas para remover.
+					pthread_rwlock_wrlock(&dc.state_lock);
+
+					for (size_t i = 0; i < dc.num_servers; i++) {
+						response.num_vms += dc.servers[i].num_hosted_vms;
+					}
+
+					if (write_all(response_fd, &response, sizeof(response)) != 1) {
+						end_client = true;
+					}
+
+					for (size_t i = 0; i < dc.num_servers && !end_client; i++) {
+						Server *server = &dc.servers[i];
+
+						for (size_t j = 0; j < server->num_hosted_vms; j++) {
+							VM *vm = server->hosted_vms[j];
+							ListResponseItem item = {0};
+
+							strcpy(item.vm_id, vm->id);
+							strcpy(item.vm_type_id, vm->type->id);
+							item.client_id = vm->client_id;
+							item.server_id = server->id;
+							item.vm_state = (char) vm->state;
+
+							if (write_all(response_fd, &item, sizeof(item)) != 1) {
+								end_client = true;
+								break;
+							}
+						}
+					}
+
+					pthread_rwlock_unlock(&dc.state_lock);
+					break;
+				}
 				
                 default:
 					break;
@@ -259,6 +325,11 @@ int main(int argc, char **argv){
     close(register_write_fd);
     close(register_fd);
     unlink(register_fifo);
+	pthread_mutex_lock(&dc.mutex);
+	dc.shutting_down = 1;
+	pthread_cond_signal(&dc.child_cond);
+	pthread_mutex_unlock(&dc.mutex);
+	pthread_join(wait_thread, NULL);
     datacenter_destroy(&dc);
     return 0;
 }
