@@ -105,16 +105,16 @@ typedef struct{
 } ReserveRequestItems;
 
 typedef struct{
-char reservation_id[MAX_STRING_SIZE];
-size_t items_count;
+    char reservation_id[MAX_STRING_SIZE];
+    size_t items_count;
 } ReserveRequest;
 
-typedef struct __attribute__((packed)) {
+typedef struct {
     char result;
     size_t num_vms;
 } ListResponse;
 
-typedef struct __attribute__((packed)) {
+typedef struct {
     char vm_id[44];
     char vm_type_id[MAX_STRING_SIZE];
     int client_id;
